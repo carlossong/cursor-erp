@@ -25,16 +25,16 @@ Ver `tasks/todo.md`.
 
 ### Checkpoint: Foundation (Tasks 1–2)
 
-- [ ] Factories + unique de código + soft delete + `active()`
-- [ ] Categoria nullable; `nullOnDelete` / desvincular no soft delete
+- [x] Factories + unique de código + soft delete + `active()`
+- [x] Categoria nullable; `nullOnDelete` / desvincular no soft delete
 
 ### Checkpoint: Authz (Task 3)
 
-- [ ] Matriz §9 catálogo + `view-cost`; 404 cross-company
+- [x] Matriz §9 catálogo + `view-cost`; 404 cross-company
 
 ### Checkpoint: UI (Tasks 4–6)
 
-- [ ] Index com busca; Create/Edit; custo oculto sem `view-cost`; categorias
+- [x] Index com busca; Create/Edit; custo oculto sem `view-cost`; categorias
 
 ## Risks and Mitigations
 

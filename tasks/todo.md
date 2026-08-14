@@ -7,15 +7,15 @@ Fonte: `docs/spec.md` §8.4, §9, §13; `docs/prd.md` CAT-01..03 (CAT-04 gancho 
 **Description:** Enums de unidade e modo de faturamento; tabela de categorias (CAT-02).
 
 **Acceptance criteria:**
-- [ ] `App\Enums\Unit` (`hora`, `un`, `m2`, `mes`, `vb`) com `label()`
-- [ ] `App\Enums\BillingMode` (`exige_os`, `faturamento_imediato`) com `label()` — sem recorrente
-- [ ] Migration `service_categories`: `foreignIdFor(Company::class)->constrained()->restrictOnDelete()`, `name`, `softDeletes()`, índice `(company_id, name)`
-- [ ] Model `HasFactory`, `SoftDeletes`, `#[Fillable]`, `company()`, `services()` + `chaperone()`
-- [ ] `Company::serviceCategories()`
-- [ ] Factory
+- [x] `App\Enums\Unit` (`hora`, `un`, `m2`, `mes`, `vb`) com `label()`
+- [x] `App\Enums\BillingMode` (`exige_os`, `faturamento_imediato`) com `label()` — sem recorrente
+- [x] Migration `service_categories`: `foreignIdFor(Company::class)->constrained()->restrictOnDelete()`, `name`, `softDeletes()`, índice `(company_id, name)`
+- [x] Model `HasFactory`, `SoftDeletes`, `#[Fillable]`, `company()`, `services()` + `chaperone()`
+- [x] `Company::serviceCategories()`
+- [x] Factory
 
 **Verification:**
-- [ ] Pest em `tests/Feature/Services/ServiceTest.php` (categoria)
+- [x] Pest em `tests/Feature/Services/ServiceTest.php` (categoria)
 
 **Dependencies:** None
 
@@ -33,15 +33,15 @@ Fonte: `docs/spec.md` §8.4, §9, §13; `docs/prd.md` CAT-01..03 (CAT-04 gancho 
 **Description:** Catálogo de serviços (CAT-01, CAT-03).
 
 **Acceptance criteria:**
-- [ ] Migration `services`: `company_id` restrict, `category_id` nullable `nullOnDelete`, `code`, `name`, `description` nullable, `unit`, `default_price` / `default_cost` `decimal(14,2)`, `billing_mode`, `is_active` default true, `softDeletes()`, unique `(company_id, code)`, índice `(company_id, name)`
-- [ ] Model `HasFactory`, `SoftDeletes`, `#[Fillable]` (sem `company_id`), casts enum/decimal/bool, `$attributes`, `company()`, `category()`, `active()`
-- [ ] `Company::services()`
-- [ ] Factory + state `inactive()`
-- [ ] Unique de código por empresa; mesmo código em empresas distintas ok
+- [x] Migration `services`: `company_id` restrict, `category_id` nullable `nullOnDelete`, `code`, `name`, `description` nullable, `unit`, `default_price` / `default_cost` `decimal(14,2)`, `billing_mode`, `is_active` default true, `softDeletes()`, unique `(company_id, code)`, índice `(company_id, name)`
+- [x] Model `HasFactory`, `SoftDeletes`, `#[Fillable]` (sem `company_id`), casts enum/decimal/bool, `$attributes`, `company()`, `category()`, `active()`
+- [x] `Company::services()`
+- [x] Factory + state `inactive()`
+- [x] Unique de código por empresa; mesmo código em empresas distintas ok
 
 **Verification:**
-- [ ] `php artisan test --compact tests/Feature/Services/ServiceTest.php`
-- [ ] `php artisan test`
+- [x] `php artisan test --compact tests/Feature/Services/ServiceTest.php`
+- [x] `php artisan test`
 
 **Dependencies:** Task 1
 
@@ -55,22 +55,22 @@ Fonte: `docs/spec.md` §8.4, §9, §13; `docs/prd.md` CAT-01..03 (CAT-04 gancho 
 **Estimated scope:** M
 
 ## Checkpoint: Foundation
-- [ ] All tests pass
-- [ ] Sem lazy load nas relações usadas nos testes (`load` / `with`)
+- [x] All tests pass
+- [x] Sem lazy load nas relações usadas nos testes (`load` / `with`)
 
 ## Task 3: Policies + permissions
 
 **Description:** Matriz §9 para catálogo, incluindo custo interno.
 
 **Acceptance criteria:**
-- [ ] Permissions `services.view|create|update|delete|view-cost`
-- [ ] Admin: CRUD + `view-cost`; comercial e operação: view; financeiro e gestor: view + `view-cost`
-- [ ] `ServicePolicy` e `ServiceCategoryPolicy` (mesmas permissions); outra empresa: `denyAsNotFound()`
-- [ ] Sem `Policy::before`
-- [ ] `viewCost` na policy do serviço
+- [x] Permissions `services.view|create|update|delete|view-cost`
+- [x] Admin: CRUD + `view-cost`; comercial e operação: view; financeiro e gestor: view + `view-cost`
+- [x] `ServicePolicy` e `ServiceCategoryPolicy` (mesmas permissions); outra empresa: `denyAsNotFound()`
+- [x] Sem `Policy::before`
+- [x] `viewCost` na policy do serviço
 
 **Verification:**
-- [ ] `php artisan test --compact tests/Feature/Authorization/ServicePolicyTest.php`
+- [x] `php artisan test --compact tests/Feature/Authorization/ServicePolicyTest.php`
 
 **Dependencies:** Task 2
 
@@ -87,12 +87,12 @@ Fonte: `docs/spec.md` §8.4, §9, §13; `docs/prd.md` CAT-01..03 (CAT-04 gancho 
 **Description:** Listagem com busca por código/nome; badge ativo/inativo; coluna de custo só com `view-cost`.
 
 **Acceptance criteria:**
-- [ ] `Route::livewire` Index, `#[Title]`, `WithPagination`, `#[Computed]`, `whereAny` + `resetPage()` no filtro, `render()` explícito
-- [ ] Sidebar Serviços com `@can('viewAny', Service::class)`
-- [ ] Custo oculto para comercial/operação
+- [x] `Route::livewire` Index, `#[Title]`, `WithPagination`, `#[Computed]`, `whereAny` + `resetPage()` no filtro, `render()` explícito
+- [x] Sidebar Serviços com `@can('viewAny', Service::class)`
+- [x] Custo oculto para comercial/operação
 
 **Verification:**
-- [ ] Pest: busca; inativo com badge; comercial 200 sem custo; sem permissão 403
+- [x] Pest: busca; inativo com badge; comercial 200 sem custo; sem permissão 403
 
 **Dependencies:** Task 3
 
@@ -110,13 +110,13 @@ Fonte: `docs/spec.md` §8.4, §9, §13; `docs/prd.md` CAT-01..03 (CAT-04 gancho 
 **Description:** Admin cria/edita serviço da mesma company; código unique por empresa; custo só para quem tem `view-cost`.
 
 **Acceptance criteria:**
-- [ ] `/services/create` e `/services/{service}/edit`; `company_id` do ator; `$this->authorize()`
-- [ ] Flux form, `wire:submit`, `Rule::unique` em `code`, unidade e `billing_mode` via select nativo, prefixo `R$`
-- [ ] Comercial 403 no create; gestor vê e não grava; foreign 404
-- [ ] Soft delete com `wire:confirm` (admin)
+- [x] `/services/create` e `/services/{service}/edit`; `company_id` do ator; `$this->authorize()`
+- [x] Flux form, `wire:submit`, `Rule::unique` em `code`, unidade e `billing_mode` via select nativo, prefixo `R$`
+- [x] Comercial 403 no create; gestor vê e não grava; foreign 404
+- [x] Soft delete com `wire:confirm` (admin)
 
 **Verification:**
-- [ ] Pest Livewire create/edit + unique de código + assert no banco
+- [x] Pest Livewire create/edit + unique de código + assert no banco
 
 **Dependencies:** Task 4
 
@@ -137,12 +137,12 @@ Fonte: `docs/spec.md` §8.4, §9, §13; `docs/prd.md` CAT-01..03 (CAT-04 gancho 
 **Description:** Página simples de categorias: criar, listar, excluir (soft delete). Desvincula serviços no delete.
 
 **Acceptance criteria:**
-- [ ] `/service-categories`; só admin cria/exclui; leitura para quem vê o catálogo
-- [ ] Soft delete + `category_id` dos serviços da categoria vai a `null`
-- [ ] Link a partir do Index de serviços
+- [x] `/service-categories`; só admin cria/exclui; leitura para quem vê o catálogo
+- [x] Soft delete + `category_id` dos serviços da categoria vai a `null`
+- [x] Link a partir do Index de serviços
 
 **Verification:**
-- [ ] Pest: admin cria/exclui; comercial 403 no create; serviço fica sem categoria
+- [x] Pest: admin cria/exclui; comercial 403 no create; serviço fica sem categoria
 
 **Dependencies:** Task 5
 
@@ -154,6 +154,6 @@ Fonte: `docs/spec.md` §8.4, §9, §13; `docs/prd.md` CAT-01..03 (CAT-04 gancho 
 **Estimated scope:** S
 
 ## Checkpoint: Complete
-- [ ] CAT-01, CAT-02, CAT-03 cobertos por teste; CAT-04 só colunas de tabela
-- [ ] Pint + Larastan + Pest verdes
-- [ ] Pronto para Fase 4 (orçamentos)
+- [x] CAT-01, CAT-02, CAT-03 cobertos por teste; CAT-04 só colunas de tabela
+- [x] Pint + Larastan + Pest verdes
+- [x] Pronto para Fase 4 (orçamentos)
