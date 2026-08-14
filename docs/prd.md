@@ -98,7 +98,7 @@ Prioridade: **P0** = MVP · **P1** = logo após o MVP · **P2** = evolução.
 | ID | Requisito |
 |---|---|
 | AUTH-01 | Login por e-mail e senha, sessão web (guard `web`), logout (invalida sessão + CSRF), “lembrar-me”. Usuário inativo (`is_active`) não autentica — coluna e regra na Fase 1. |
-| AUTH-02 | Recuperação de senha por e-mail. |
+| AUTH-02 | Recuperação de senha por e-mail (Fortify: link 60 min, tabela `password_reset_tokens`). |
 | AUTH-03 | Papéis: `admin`, `comercial`, `operacao`, `financeiro`, `gestor`. Spatie guarda o papel; **policy Laravel** por model autoriza a ação (matriz em [`spec.md`](./spec.md)). |
 | AUTH-04 | Cadastro da empresa prestadora: razão social, nome fantasia, CNPJ, IE/IM, endereço, e-mail, telefone, logotipo. |
 | AUTH-05 | Auditoria básica: quem criou/alterou registros críticos (orçamento, OS, fatura, pagamento). |

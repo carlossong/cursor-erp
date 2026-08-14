@@ -68,6 +68,9 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - `Gate::allowIf` / `denyIf` como padrão (não organizam por model; não disparam hooks before/after).
 - `hasRole('admin')` espalhado no Livewire/service. Policy consulta permission Spatie + estado + empresa.
 - Rotas manuais `verification.notice` / `verification.verify` / `verification.send`. O Fortify já registra ([verification](https://laravel.com/docs/13.x/verification)).
+- Rotas manuais `password.request` / `password.email` / `password.reset` / `password.update` ou `Password::sendResetLink` no `routes/web.php`. Fortify já registra ([passwords](https://laravel.com/docs/13.x/passwords)).
+- Driver `cache` para tokens de reset (`artisan cache:clear` apagaria os tokens). Tabela `password_reset_tokens`.
+- `Hash::make` em `ResetUserPassword` — o cast `hashed` já hasheia; `CompletePasswordReset` do Fortify rotaciona `remember_token`.
 
 ### 1.2 Diagrama de contexto
 
@@ -84,12 +87,12 @@ flowchart TB
 
 ### 1.3 Convenções Laravel 13 que esta spec segue
 
-Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [verification](https://laravel.com/docs/13.x/verification), [hashing](https://laravel.com/docs/13.x/hashing), [authorization](https://laravel.com/docs/13.x/authorization), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
+Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [verification](https://laravel.com/docs/13.x/verification), [passwords](https://laravel.com/docs/13.x/passwords), [hashing](https://laravel.com/docs/13.x/hashing), [authorization](https://laravel.com/docs/13.x/authorization), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
 
 1. **Criar o app** com `laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction`.
 2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). App autenticado em `/dashboard`. Telescope só nesse ambiente.
 3. **Bootstrap:** `bootstrap/app.php` + `bootstrap/providers.php`. Auth: Fortify (`config/fortify.php`). Redirects em `withMiddleware`: `redirectGuestsTo(route('login'))`, `redirectUsersTo(route('dashboard'))`; `authenticateSessions()` para invalidar outras sessões ([authentication](https://laravel.com/docs/13.x/authentication#protecting-routes)).
-4. **Schedule** em `routes/console.php` (`Schedule::job(...)->dailyAt('01:00')`), não em `app/Console/Kernel.php` (não existe mais no skeleton).
+4. **Schedule** em `routes/console.php` (`Schedule::job(...)->dailyAt('01:00')`), não em `app/Console/Kernel.php` (não existe mais no skeleton). Tokens de reset: `Schedule::command('auth:clear-resets')->everyFifteenMinutes()` ([passwords](https://laravel.com/docs/13.x/passwords#deleting-expired-tokens)).
 5. **Jobs** com atributos PHP 8 do framework: `#[Tries(5)]`, `#[Backoff(60)]`, `#[Timeout(120)]`. Roteamento central: `Queue::route(GenerateDocumentPdfJob::class, connection: 'redis', queue: 'pdfs')`.
 6. **Policies** com `php artisan make:policy QuotePolicy --model=Quote` (ou `make:model Quote -mfs --policy`). Discovery automática (`app/Policies`). Livewire: `$this->authorize('update', $quote)` / `create` com `Quote::class`. Blade: `@can`. 403 vira `AuthorizationException` ([authorization](https://laravel.com/docs/13.x/authorization)).
 7. **Models** em `app/Models`. Gerar com `php artisan make:model Quote -mfs --policy` (migration + factory + seeder + policy). **Não** `--all`: não queremos controller — a UI é Livewire. PK bigint autoincremento; **sem** UUID/ULID e **sem** PK composta ([Eloquent](https://laravel.com/docs/13.x/eloquent)).
@@ -104,6 +107,7 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 16. **Autorização** por **policy** no model (`viewAny`, `view`, `create`, `update`, `delete` + verbos de domínio: `send`, `issue`, `registerPayment`). Spatie guarda papel/permission; a policy decide. Outra empresa: `Response::denyAsNotFound()`. Sem `Gate::before` de admin ([authorization](https://laravel.com/docs/13.x/authorization)).
 17. **Verificação de e-mail** `MustVerifyEmail` + coluna `email_verified_at` + middleware `verified` no painel. Rotas Fortify (`verification.*`). Admin cria usuário já verificado; troca de e-mail zera a verificação e reenvia o link ([verification](https://laravel.com/docs/13.x/verification)).
 18. **Hashing** bcrypt (`HASH_DRIVER=bcrypt`, `BCRYPT_ROUNDS=12`). Senha no `User` com cast `hashed` — sem `Hash::make` no assign. Rehash no login. `HASH_VERIFY` ligado. Testes: `BCRYPT_ROUNDS=4` ([hashing](https://laravel.com/docs/13.x/hashing)).
+19. **Reset de senha** Fortify (`Features::resetPasswords()`). Broker `users`, driver `database`, token 60 min, throttle 60 s. `trustHosts()` no bootstrap. Sem rotas manuais ([passwords](https://laravel.com/docs/13.x/passwords)).
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
@@ -216,7 +220,7 @@ Stack do painel: cookie + sessão Laravel (`SESSION_DRIVER=database`). Guard ún
 | Feature | Neste ERP |
 |---|---|
 | `Features::registration()` | **Removido.** `/register` 404. Views de login só usam `Route::has('register')`. |
-| `Features::resetPasswords()` | Ligado (AUTH-02). Broker `users`, token 60 min. |
+| `Features::resetPasswords()` | Ligado (AUTH-02). Broker `users`, driver `database`, token 60 min, throttle 60 s. |
 | `Features::emailVerification()` | Ligado (AUTH-06). `User` implementa `MustVerifyEmail`. Coluna `email_verified_at` (migration do kit). Rotas do **painel**: `auth` + `verified`. Perfil (`settings/profile`) fica só `auth` para quem ainda não verificou poder corrigir o e-mail. |
 | `Features::twoFactorAuthentication()` | Ligado (default do kit: `confirm` + `confirmPassword`). TOTP opcional em Configurações. |
 | `Features::passkeys()` | Ligado (default do kit). |
@@ -250,6 +254,21 @@ Driver **bcrypt** (default do kit e do Laravel). `HASH_DRIVER=bcrypt`, `BCRYPT_R
 | Rehash | `rehash_on_login` (default `true`). Se subir `BCRYPT_ROUNDS`, o próximo login atualiza o hash. Não chamar `Hash::needsRehash` à mão. |
 | Testes | `phpunit.xml`: `BCRYPT_ROUNDS=4` (skeleton). Produção/dev: 12. |
 | Complexidade | `Password::defaults` no `AppServiceProvider` (prod: 12 chars, mixed, uncompromised). É validação, não o algoritmo. |
+
+**Reset de senha** ([passwords](https://laravel.com/docs/13.x/passwords))
+
+Fortify já registra as rotas: `password.request` / `password.email` (pedir link), `password.reset` / `password.update` (definir senha). Views: `forgot-password` e `reset-password`. **Não** copiar o `Password::sendResetLink` da doc para `routes/web.php`.
+
+| Tema | Como |
+|---|---|
+| Model | `User` já tem `Notifiable` + `CanResetPassword` (base `Authenticatable`). |
+| Tokens | Driver **database**, tabela `password_reset_tokens` (migration do kit). Sem driver `cache`. |
+| Validade | `expire` 60 min, `throttle` 60 s (`config/auth.php`). |
+| Gravar | `ResetUserPassword` recebe texto puro; cast `hashed`. Fortify `CompletePasswordReset` troca `remember_token` e dispara `PasswordReset`. **Não** `Hash::make` na action. |
+| Host | `$middleware->trustHosts()` em `bootstrap/app.php` — URL do e-mail usa `APP_URL`, não o `Host` do request. Inativo em `local` e testes. |
+| Limpeza | `Schedule::command('auth:clear-resets')->everyFifteenMinutes()` em `routes/console.php`. |
+| E-mail | Notification `ResetPassword` padrão. Tradução em `lang/pt_BR.json` + `lang/pt_BR/passwords.php`. Sem `createUrlUsing` / notification custom no MVP. |
+| Depois do reset | Redirect para `login` (já no teste do kit). |
 
 **Verificação de e-mail** ([verification](https://laravel.com/docs/13.x/verification))
 
@@ -1113,6 +1132,7 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 | Authentication (guards, rotas, sessão, confirmar senha) | https://laravel.com/docs/13.x/authentication |
 | Email verification (`MustVerifyEmail`, `verified`) | https://laravel.com/docs/13.x/verification |
 | Hashing (bcrypt, `hashed` cast, rehash, `HASH_VERIFY`) | https://laravel.com/docs/13.x/hashing |
+| Resetting passwords (broker, tokens, `auth:clear-resets`) | https://laravel.com/docs/13.x/passwords |
 | Fortify (auth do kit) | https://laravel.com/docs/13.x/fortify |
 | Installation (`laravel new`, `composer run dev`) | https://laravel.com/docs/13.x/installation |
 | Playbook de agentes (default React — **não** usamos) | https://laravel.com/for/agents |
