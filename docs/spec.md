@@ -609,6 +609,38 @@ Nav do MVP (quando as rotas existirem), grupos:
 
 Anexos da OS no MVP: `<flux:input type="file" wire:model="files" multiple>` + `WithFileUploads` (NFR: `mimes` + `max:10240`). Dashboard: cards/contagens, não `flux:chart`. Observações de orçamento: `flux:textarea`, não editor rico.
 
+### 1.7 Agent skills (Addy Osmani)
+
+Pack: [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) (MIT), commit `df1edb2e`, 14/08/2026. Instalado como o [Cursor setup](https://github.com/addyosmani/agent-skills/blob/main/docs/cursor-setup.md) pede: workflows em `.cursor/skills/<nome>/SKILL.md`, checklists em `.cursor/references/`, regra curta em `.cursor/rules/agent-skills.mdc`. **Não** colar `SKILL.md` inteiro em rules.
+
+Skills **Laravel Boost** (`laravel-best-practices`, `livewire-development`, `pest-testing`, `fluxui-development`, `fortify-development`) continuam a autoridade de stack. Este pack governa o **ciclo** (definir → planejar → fatiar → testar → revisar → publicar).
+
+Roteamento: `.cursor/skills/using-agent-skills/SKILL.md`. Overlay deste ERP na rule (Pest, Flux, sem API HTTP, PR `cursor/*-ed75`).
+
+| Skill | Uso neste ERP |
+|---|---|
+| `using-agent-skills` | Sempre — escolhe o workflow. |
+| `spec-driven-development` | Já feito: `docs/prd.md` + `docs/spec.md`. Feature nova atualiza esses arquivos; não cria `SPEC.md` paralelo. |
+| `planning-and-task-breakdown` | Fases em `docs/spec.md` §18. Slice = uma fase ou um agregado (Quote, OS, Invoice). |
+| `source-driven-development` | Casa com o hábito do projeto (URLs oficiais Laravel/Livewire/Flux). Boost `search-docs` se o MCP existir. |
+| `incremental-implementation` + `test-driven-development` | Fatia vertical (migration → model → policy → Livewire → Pest). Teste Feature **antes** ou no mesmo commit da regra. `php artisan test`. |
+| `frontend-ui-engineering` | Acessibilidade + Flux (§1.6). Não SPA. |
+| `api-and-interface-design` | Contratos de Service/Policy/Livewire. `routes/api.php` só no P1. |
+| `debugging-and-error-recovery` | Falha de teste/CI: reproduzir → isolar → corrigir → guardar com teste. |
+| `code-review-and-quality` / `code-simplification` / `security-and-hardening` | Antes de merge. Segurança: Fortify + policy + CSRF já na spec. |
+| `git-workflow-and-versioning` / `ci-cd-and-automation` | Commits atômicos; CI = Pint + Larastan + Pest (sqlite). |
+| `documentation-and-adrs` | Decisão dura vai para `docs/spec.md` (é o ADR deste repo). |
+| `context-engineering` | `AGENTS.md` (Boost) + esta spec + skills. |
+| `interview-me` / `idea-refine` | Só se o pedido for vago. Fase 0 já tem spec. |
+| `browser-testing-with-devtools` | Fora do MVP (sem Dusk). |
+| `performance-optimization` | NFR-02; medir query (`dumpRawSql` em dev), não Web Vitals de SPA. |
+| `observability-and-instrumentation` | Telescope local; Pulse P1; log `stack`. Sem OpenTelemetry no MVP. |
+| `shipping-and-launch` | Quando for a produção (`optimize`, `/up`, `migrate --isolated`). |
+| `deprecation-and-migration` | P1+ (não há legado ainda). |
+| `doubt-driven-development` | Numeração, dinheiro, máquina de estados — decisões irreversíveis. |
+
+Anti-padrões do pack que **este repo também rejeita**: implementar sem spec, “teste depois”, pular verificação, carregar as 24 skills em toda sessão, refactor sem teste.
+
 ---
 
 ## 2. Estrutura do repositório (alvo)

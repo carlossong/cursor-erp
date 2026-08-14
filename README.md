@@ -10,6 +10,7 @@ UI: **Livewire 4 + Blade + Flux UI 2** ([starter kit](https://laravel.com/docs/1
 |---|---|
 | [docs/prd.md](docs/prd.md) | Produto: visão, personas, requisitos |
 | [docs/spec.md](docs/spec.md) | Técnica, domínio e fases de implementação |
+| [.cursor/skills](.cursor/skills) | Skills: Laravel Boost + [agent-skills](https://github.com/addyosmani/agent-skills) (ciclo spec → build → review) |
 
 ## Como rodar
 

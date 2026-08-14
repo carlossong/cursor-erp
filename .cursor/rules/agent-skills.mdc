@@ -1,0 +1,21 @@
+---
+description: Use agent-skills workflows from .cursor/skills
+alwaysApply: true
+---
+
+Before non-trivial technical work:
+
+1. Route via `.cursor/skills/using-agent-skills/SKILL.md`.
+2. Read and follow the matching skill under `.cursor/skills/<name>/SKILL.md`.
+3. Open `.cursor/references/` when the skill links to a checklist (`../../references/…` from a skill folder).
+4. Prefer project skills over guessing; José does not need to say "read skill" each time.
+
+Stack overlay for this ERP (wins over generic examples inside the pack):
+
+- Spec already exists: `docs/prd.md` + `docs/spec.md`. Do not create a parallel `SPEC.md`.
+- UI is **Livewire 4 class components + Blade + Flux UI 2**, not React/Vue/Svelte. `frontend-ui-engineering` applies to Flux/a11y/spacing — not a SPA.
+- Tests are **Pest 5 Feature** (`php artisan test`), Pint, Larastan. Not the React/Jest examples in `testing-patterns.md`. Dusk / DevTools browser MCP: fora do MVP.
+- HTTP API: **não** no MVP. `api-and-interface-design` applies to Livewire/service/policy boundaries, not `routes/api.php`.
+- Source of truth for Laravel/Livewire/Flux: official docs (this repo already works source-driven). Boost `search-docs` when the MCP is available.
+- Git: feature branch `cursor/<name>-ed75` + PR into `main`. Atomic commits still apply; ~100 lines is a guideline, not a hard cap on migrations.
+- Laravel Boost skills (`laravel-best-practices`, `livewire-development`, `pest-testing`, `fluxui-development`, `fortify-development`) stay the stack authority. Agent-skills own the **lifecycle** (spec → plan → slice → test → review → ship).
