@@ -66,6 +66,7 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - Share Inertia de permissions (`HandleInertiaRequests`). UI é Blade; `@can` no servidor.
 - `Gate::allowIf` / `denyIf` como padrão (não organizam por model; não disparam hooks before/after).
 - `hasRole('admin')` espalhado no Livewire/service. Policy consulta permission Spatie + estado + empresa.
+- Rotas manuais `verification.notice` / `verification.verify` / `verification.send`. O Fortify já registra ([verification](https://laravel.com/docs/13.x/verification)).
 
 ### 1.2 Diagrama de contexto
 
@@ -82,7 +83,7 @@ flowchart TB
 
 ### 1.3 Convenções Laravel 13 que esta spec segue
 
-Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [authorization](https://laravel.com/docs/13.x/authorization), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
+Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [verification](https://laravel.com/docs/13.x/verification), [authorization](https://laravel.com/docs/13.x/authorization), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
 
 1. **Criar o app** com `laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction`.
 2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). App autenticado em `/dashboard`. Telescope só nesse ambiente.
@@ -100,6 +101,7 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 14. **Collections** Eloquent no agregado já carregado (`$quote->items`). Filtro de listagem é SQL, não `Model::all()->reject()`. `toQuery()->update()` **não** muda status de documento ([eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections)).
 15. **Auth** Fortify + guard `web` (session) + Eloquent `User`. Usuário logado via `Auth::user()` / `auth()->user()` / `$request->user()`. Painel: `auth` + `verified`. Sem HTTP Basic, Socialite ou guard extra ([authentication](https://laravel.com/docs/13.x/authentication)).
 16. **Autorização** por **policy** no model (`viewAny`, `view`, `create`, `update`, `delete` + verbos de domínio: `send`, `issue`, `registerPayment`). Spatie guarda papel/permission; a policy decide. Outra empresa: `Response::denyAsNotFound()`. Sem `Gate::before` de admin ([authorization](https://laravel.com/docs/13.x/authorization)).
+17. **Verificação de e-mail** `MustVerifyEmail` + coluna `email_verified_at` + middleware `verified` no painel. Rotas Fortify (`verification.*`). Admin cria usuário já verificado; troca de e-mail zera a verificação e reenvia o link ([verification](https://laravel.com/docs/13.x/verification)).
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
@@ -213,7 +215,7 @@ Stack do painel: cookie + sessão Laravel (`SESSION_DRIVER=database`). Guard ún
 |---|---|
 | `Features::registration()` | **Removido.** `/register` 404. Views de login só usam `Route::has('register')`. |
 | `Features::resetPasswords()` | Ligado (AUTH-02). Broker `users`, token 60 min. |
-| `Features::emailVerification()` | Ligado. `User` implementa `MustVerifyEmail`. Rotas do painel: `auth` + `verified`. Admin cria usuário já verificado. |
+| `Features::emailVerification()` | Ligado (AUTH-06). `User` implementa `MustVerifyEmail`. Coluna `email_verified_at` (migration do kit). Rotas do **painel**: `auth` + `verified`. Perfil (`settings/profile`) fica só `auth` para quem ainda não verificou poder corrigir o e-mail. |
 | `Features::twoFactorAuthentication()` | Ligado (default do kit: `confirm` + `confirmPassword`). TOTP opcional em Configurações. |
 | `Features::passkeys()` | Ligado (default do kit). |
 
@@ -233,6 +235,23 @@ Ações em `app/Actions/Fortify` (`CreateNewUser`, `ResetUserPassword`). Sem reg
 | Eventos | `Login`, `Failed`, `Logout`, `Lockout`, `Verified`, `PasswordReset` — gancho para log de acesso. AUTH-05 continua sendo auditoria de **documento** (`spatie/laravel-activitylog`). |
 
 Não escrever `LoginController` nem `Auth::attempt` no app. Não hashear a senha do request antes do Fortify.
+
+**Verificação de e-mail** ([verification](https://laravel.com/docs/13.x/verification))
+
+Fortify já registra as três rotas da doc: `verification.notice` (`/email/verify`), `verification.verify` (`signed` + `auth`), `verification.send` (throttle `6,1`). View: `Fortify::verifyEmailView` → `livewire.auth.verify-email`. **Não** reimplementar `EmailVerificationRequest` no `routes/web.php`.
+
+| Tema | Como |
+|---|---|
+| Model | `User implements MustVerifyEmail`. `hasVerifiedEmail()` / `markEmailAsVerified()` vêm da base `Authenticatable`. |
+| Banco | `email_verified_at` nullable na migration do kit — **não** editar. |
+| Painel | `middleware(['auth', 'verified'])`. Não verificado → `verification.notice`. |
+| Perfil | `settings/profile` **sem** `verified`: o usuário corrige o e-mail e reenvia o link. |
+| Link | URL assinada, 60 min (`auth.verification.expire`). Hash = `sha1(email)`. |
+| Reenvio | POST `verification.send` (Fortify) ou `Profile::resendVerificationNotification()`. |
+| Troca de e-mail | `email_verified_at = null` + `sendEmailVerificationNotification()`. |
+| Admin (Fase 1) | Cria com `email_verified_at = now()`. **Não** disparar `Registered` (o listener `SendEmailVerificationNotification` mandaria e-mail à toa). |
+| E-mail | Notification `VerifyEmail` padrão. Tradução em `lang/pt_BR.json`. `VerifyEmail::toMailUsing` só se o layout (logo) mudar. |
+| Evento | `Illuminate\Auth\Events\Verified` no clique do link. Já coberto no teste do kit. |
 
 **Autorização** ([authorization](https://laravel.com/docs/13.x/authorization))
 
@@ -1077,6 +1096,7 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 | Starter kit Livewire (customização) | https://laravel.com/docs/13.x/starter-kits#livewire-customization |
 | Frontend Livewire + Blade | https://laravel.com/docs/13.x/frontend |
 | Authentication (guards, rotas, sessão, confirmar senha) | https://laravel.com/docs/13.x/authentication |
+| Email verification (`MustVerifyEmail`, `verified`) | https://laravel.com/docs/13.x/verification |
 | Fortify (auth do kit) | https://laravel.com/docs/13.x/fortify |
 | Installation (`laravel new`, `composer run dev`) | https://laravel.com/docs/13.x/installation |
 | Playbook de agentes (default React — **não** usamos) | https://laravel.com/for/agents |

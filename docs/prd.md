@@ -102,7 +102,7 @@ Prioridade: **P0** = MVP · **P1** = logo após o MVP · **P2** = evolução.
 | AUTH-03 | Papéis: `admin`, `comercial`, `operacao`, `financeiro`, `gestor`. Spatie guarda o papel; **policy Laravel** por model autoriza a ação (matriz em [`spec.md`](./spec.md)). |
 | AUTH-04 | Cadastro da empresa prestadora: razão social, nome fantasia, CNPJ, IE/IM, endereço, e-mail, telefone, logotipo. |
 | AUTH-05 | Auditoria básica: quem criou/alterou registros críticos (orçamento, OS, fatura, pagamento). |
-| AUTH-06 | Verificação de e-mail obrigatória para o painel (`MustVerifyEmail` + middleware `verified`). Usuários criados pelo admin já entram verificados. |
+| AUTH-06 | Verificação de e-mail obrigatória para o painel (`MustVerifyEmail` + middleware `verified`). Usuários criados pelo admin já entram verificados. Trocar o e-mail no perfil exige verificar de novo. |
 | AUTH-07 | 2FA (TOTP) e passkeys opcionais por usuário — vêm ligados no Fortify do starter kit; o operador ativa em Configurações. |
 
 ### 5.2 Clientes — P0

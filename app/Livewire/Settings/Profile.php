@@ -45,6 +45,10 @@ class Profile extends Component
 
         $user->save();
 
+        if ($user->wasChanged('email')) {
+            $user->sendEmailVerificationNotification();
+        }
+
         Flux::toast(variant: 'success', text: __('Profile updated.'));
     }
 

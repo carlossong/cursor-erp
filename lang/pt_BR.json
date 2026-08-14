@@ -14,5 +14,16 @@
     "of": "de",
     "results": "resultados",
     "pagination.previous": "Anterior",
-    "pagination.next": "Próximo"
+    "pagination.next": "Próximo",
+    "Email verification": "Verificação de e-mail",
+    "Please verify your email address by clicking on the link we just emailed to you.": "Verifique seu e-mail clicando no link que enviamos.",
+    "A new verification link has been sent to the email address you provided during registration.": "Um novo link de verificação foi enviado para o seu e-mail.",
+    "Resend verification email": "Reenviar e-mail de verificação",
+    "Your email address is unverified.": "Seu e-mail ainda não foi verificado.",
+    "Click here to re-send the verification email.": "Clique aqui para reenviar o e-mail de verificação.",
+    "A new verification link has been sent to your email address.": "Um novo link de verificação foi enviado para o seu e-mail.",
+    "Verify your email address": "Verifique seu e-mail",
+    "Please click the button below to verify your email address.": "Clique no botão abaixo para verificar seu endereço de e-mail.",
+    "Verify Email Address": "Verificar e-mail",
+    "If you did not create an account, no further action is required.": "Se você não solicitou acesso, fale com o administrador."
 }

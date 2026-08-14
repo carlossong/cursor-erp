@@ -4,7 +4,9 @@ namespace Tests\Feature\Settings;
 
 use App\Livewire\Settings\Profile;
 use App\Models\User;
+use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -39,6 +41,23 @@ class ProfileUpdateTest extends TestCase
         $this->assertNull($user->email_verified_at);
     }
 
+    public function test_verification_notification_is_sent_when_email_address_is_changed(): void
+    {
+        Notification::fake();
+
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        Livewire::test(Profile::class)
+            ->set('name', $user->name)
+            ->set('email', 'novo@example.com')
+            ->call('updateProfileInformation')
+            ->assertHasNoErrors();
+
+        Notification::assertSentTo($user->fresh(), VerifyEmail::class);
+    }
+
     public function test_email_verification_status_is_unchanged_when_email_address_is_unchanged(): void
     {
         $user = User::factory()->create();
@@ -53,6 +72,15 @@ class ProfileUpdateTest extends TestCase
         $response->assertHasNoErrors();
 
         $this->assertNotNull($user->refresh()->email_verified_at);
+    }
+
+    public function test_unverified_users_can_visit_the_profile_settings_page(): void
+    {
+        $user = User::factory()->unverified()->create();
+
+        $this->actingAs($user)
+            ->get(route('profile.edit'))
+            ->assertOk();
     }
 
     public function test_user_can_delete_their_account(): void
