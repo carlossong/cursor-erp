@@ -18,7 +18,7 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 | Banco | PostgreSQL 16 | Laravel 13 suporta PG 10+; JSONB, constraints, `lockForUpdate` ([database](https://laravel.com/docs/13.x/database)) |
 | Cache / fila | Redis; Horizon em staging/prod | filas Redis/database oficiais; `Queue::route` para jobs de PDF ([queues](https://laravel.com/docs/13.x/queues)) |
 | UI interna | **Livewire 4 + Blade + Flux UI 2** (componentes em classe) | starter kit oficial ([starter kits](https://laravel.com/docs/13.x/starter-kits#livewire), [frontend](https://laravel.com/docs/13.x/frontend#livewire)) |
-| Auth | **Fortify** + Spatie Permission + **Policies** Laravel | kit oficial: login, reset, verificação de e-mail, 2FA, passkeys; **sem** registro público ([starter kits — authentication](https://laravel.com/docs/13.x/starter-kits#authentication)) |
+| Auth | **Fortify** + Spatie Permission + **Policies** Laravel | kit: login/reset/2FA; autorização por model em `app/Policies` ([authorization](https://laravel.com/docs/13.x/authorization)); **sem** registro público |
 | PDF | `barryvdh/laravel-dompdf` (MVP) | A4 simples; Browsershot se o layout exigir |
 | Storage | `local` em dev; S3-compatível em prod | `php artisan storage:link` para anexos públicos |
 | Front público | nenhum no MVP | link de aprovação = P1 |
@@ -59,6 +59,13 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - `toQuery()->update()` em `status` de Quote / OS / Invoice / Payment — bypassa service, observer e máquina de estados.
 - `whereRaw` / `selectRaw` sem bindings; `orderBy` com nome de coluna do usuário; `DB::table()` no domínio (usar o model). Similarity/pgvector e `whereFullText` fora do MVP.
 - `routes/api.php` até o P1 (`install:api`). CSRF do painel permanece; Laravel 13 formalizou `PreventRequestForgery`.
+- `Gate::define` por CRUD de model. Policy em `app/Policies` (discovery `Quote` → `QuotePolicy`). Gate (nome Spatie) só para ação **sem** model (fatia do dashboard).
+- `Gate::before` / `Policy::before` que libera admin em tudo — bypassa máquina de estados e `company_id`.
+- Autorizar só no Blade (`@can` sem `$this->authorize` na ação Livewire). UI esconde; a ação **nega**.
+- `?User` em policy do painel. Guest não chega (`auth` + `verified`).
+- Share Inertia de permissions (`HandleInertiaRequests`). UI é Blade; `@can` no servidor.
+- `Gate::allowIf` / `denyIf` como padrão (não organizam por model; não disparam hooks before/after).
+- `hasRole('admin')` espalhado no Livewire/service. Policy consulta permission Spatie + estado + empresa.
 
 ### 1.2 Diagrama de contexto
 
@@ -75,14 +82,14 @@ flowchart TB
 
 ### 1.3 Convenções Laravel 13 que esta spec segue
 
-Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
+Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [authorization](https://laravel.com/docs/13.x/authorization), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
 
 1. **Criar o app** com `laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction`.
 2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). App autenticado em `/dashboard`. Telescope só nesse ambiente.
 3. **Bootstrap:** `bootstrap/app.php` + `bootstrap/providers.php`. Auth: Fortify (`config/fortify.php`). Redirects em `withMiddleware`: `redirectGuestsTo(route('login'))`, `redirectUsersTo(route('dashboard'))`; `authenticateSessions()` para invalidar outras sessões ([authentication](https://laravel.com/docs/13.x/authentication#protecting-routes)).
 4. **Schedule** em `routes/console.php` (`Schedule::job(...)->dailyAt('01:00')`), não em `app/Console/Kernel.php` (não existe mais no skeleton).
 5. **Jobs** com atributos PHP 8 do framework: `#[Tries(5)]`, `#[Backoff(60)]`, `#[Timeout(120)]`. Roteamento central: `Queue::route(GenerateDocumentPdfJob::class, connection: 'redis', queue: 'pdfs')`.
-6. **Policies** geradas com `php artisan make:policy`; Livewire chama `$this->authorize()`.
+6. **Policies** com `php artisan make:policy QuotePolicy --model=Quote` (ou `make:model Quote -mfs --policy`). Discovery automática (`app/Policies`). Livewire: `$this->authorize('update', $quote)` / `create` com `Quote::class`. Blade: `@can`. 403 vira `AuthorizationException` ([authorization](https://laravel.com/docs/13.x/authorization)).
 7. **Models** em `app/Models`. Gerar com `php artisan make:model Quote -mfs --policy` (migration + factory + seeder + policy). **Não** `--all`: não queremos controller — a UI é Livewire. PK bigint autoincremento; **sem** UUID/ULID e **sem** PK composta ([Eloquent](https://laravel.com/docs/13.x/eloquent)).
 8. **Enums** backed string + cast Eloquent (`QuoteStatus::class`). Datas de negócio: `immutable_date` / `immutable_datetime`.
 9. **Testes:** a maioria em `tests/Feature`. Rodar `php artisan test`. Paralelo depois, com `brianium/paratest`.
@@ -92,10 +99,11 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 13. **Paginação** `paginate(15)` (`LengthAwarePaginator`) nas listagens Livewire + `<flux:pagination>`. Tailwind default do kit; **não** Bootstrap. `cursorPaginate` fora do MVP ([pagination](https://laravel.com/docs/13.x/pagination)).
 14. **Collections** Eloquent no agregado já carregado (`$quote->items`). Filtro de listagem é SQL, não `Model::all()->reject()`. `toQuery()->update()` **não** muda status de documento ([eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections)).
 15. **Auth** Fortify + guard `web` (session) + Eloquent `User`. Usuário logado via `Auth::user()` / `auth()->user()` / `$request->user()`. Painel: `auth` + `verified`. Sem HTTP Basic, Socialite ou guard extra ([authentication](https://laravel.com/docs/13.x/authentication)).
+16. **Autorização** por **policy** no model (`viewAny`, `view`, `create`, `update`, `delete` + verbos de domínio: `send`, `issue`, `registerPayment`). Spatie guarda papel/permission; a policy decide. Outra empresa: `Response::denyAsNotFound()`. Sem `Gate::before` de admin ([authorization](https://laravel.com/docs/13.x/authorization)).
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
-Fontes: Eloquent, Queues, Mail, Notifications, Errors, Livewire, Fortify, starter kit.
+Fontes: Eloquent, Queues, Mail, Notifications, Errors, Livewire, Fortify, Authorization, starter kit.
 
 **Criação (desvio consciente do playbook de agentes)**
 
@@ -226,6 +234,30 @@ Ações em `app/Actions/Fortify` (`CreateNewUser`, `ResetUserPassword`). Sem reg
 
 Não escrever `LoginController` nem `Auth::attempt` no app. Não hashear a senha do request antes do Fortify.
 
+**Autorização** ([authorization](https://laravel.com/docs/13.x/authorization))
+
+Gates = ação sem recurso (dashboard). Policies = um model. Este ERP usa **policies** em `app/Policies`; Spatie registra permissions como gates — a policy **consulta** `$user->can('quotes.update')`, o Livewire **não** chama o gate Spatie direto no lugar da policy.
+
+| Tema | Como |
+|---|---|
+| Gerar | `make:policy QuotePolicy --model=Quote` → `viewAny`, `view`, `create`, `update`, `delete`, `restore`, `forceDelete`. Soft delete só em cadastros; documentos **não** implementam `restore`/`forceDelete`. |
+| Discovery | `App\Models\Quote` → `App\Policies\QuotePolicy`. Sem `Gate::policy()` / `#[UsePolicy]` / `guessPolicyNamesUsing` no MVP. |
+| Verbos extra | Nomes livres na policy: Quote `send`, `approve`, `reject`, `cancel`, `revise`, `convert`, `applyDiscount`; OS `start`, `pause`, `resume`, `complete`, `cancel`, `addTimeEntry`; Invoice `issue`, `cancel`, `registerPayment`. |
+| Checagem | (1) `company_id` do user = do model → senão `Response::denyAsNotFound()` (não vazar ID). (2) permission Spatie. (3) estado do documento (rascunho editável, etc.). Mensagem: `Response::deny(__('…'))`. |
+| Sem model | `create` / `viewAny`: `$this->authorize('create', Quote::class)`. |
+| Livewire | `$this->authorize()` no `mount` **e** em cada ação (`send`, `addItem`). Trait `AuthorizesRequests` já vem no componente Livewire. |
+| Blade | `@can('update', $quote)` / `@can('create', Quote::class)` / `@canany` nos botões. Não substitui o authorize da ação. |
+| Rota | `->can('viewAny', Quote::class)` na listagem; `->can('view', 'quote')` se houver implicit binding. Camada extra, não a única. |
+| Contexto extra | Desconto: `$this->authorize('applyDiscount', [$quote, $percent])` ([additional context](https://laravel.com/docs/13.x/authorization#supplying-additional-context)). |
+| Admin | Seed de **todas** as permissions no papel `admin`. **Não** `Gate::before` / `before()` que retorna `true` — admin também respeita estado e empresa. Permission extra só do admin (`invoices.cancel-paid`) em vez de `hasRole('admin')` no código. |
+| Guest | Policies com `User $user` obrigatório. Painel não é público. |
+| Listagem | Policy `viewAny` não filtra query. `Quote::query()->whereBelongsTo($user->company)` (scope `forCompany`). Sem global scope de empresa no MVP. |
+| Jobs / seed | Job PDF não chama policy (já autorizado na ação). Seeder pode `withoutEvents`. |
+| Teste | `actingAs` por papel; `livewire(…)->call('send')->assertForbidden()`; `$user->can('update', $quote)`. |
+| Spatie | Sem feature `teams` do pacote. Isolamento = `company_id` na policy. |
+
+`#[Authorize]` de controller **não** entra — não há controllers de domínio. Inertia share de permissions **não** entra.
+
 **Mail / notificação (P1)**
 
 Mailables e `Notification` com `ShouldQueue`. Local: `MAIL_MAILER=log`.
@@ -238,6 +270,7 @@ Mailables e `Notification` com `ShouldQueue`. Local: `MAIL_MAILER=log`.
 - Não servir a app fora de `public/`.
 - Rate limit no login (Fortify, e-mail + IP).
 - Senha: cast `hashed`; confirmação recente em telas sensíveis (`password.confirm`).
+- Toda ação Livewire de domínio: `$this->authorize()` (403) ou `denyAsNotFound()` (outra empresa).
 
 **CI**
 
@@ -741,9 +774,9 @@ Implementação: `owen-it/laravel-auditing` nos models `Quote`, `WorkOrder`, `In
 
 ---
 
-## 9. Permissões (Spatie)
+## 9. Permissões (Spatie) e policies
 
-Papéis: `admin`, `comercial`, `operacao`, `financeiro`, `gestor`.
+Papéis: `admin`, `comercial`, `operacao`, `financeiro`, `gestor`. Spatie persiste papel ↔ permission; **não** autoriza sozinho a linha (empresa, status). Isso é `app/Policies`.
 
 | Capacidade | admin | comercial | operacao | financeiro | gestor |
 |---|---|---|---|---|---|
@@ -764,7 +797,9 @@ Papéis: `admin`, `comercial`, `operacao`, `financeiro`, `gestor`.
 \* financeiro cancela fatura **sem** pagamento; com pagamento, só admin.  
 \** dashboard filtrado ao seu domínio (pipeline vs OS vs a receber).
 
-Policies Laravel espelham a tabela. Livewire chama `$this->authorize()`; rotas usam middleware `can:`.
+Policies espelham a tabela (`QuotePolicy::send` ↔ “enviar / aprovar / recusar”). Livewire: `$this->authorize('send', $quote)`. Blade: `@can('send', $quote)`. Rota: `->can('viewAny', Quote::class)`. Outra `company_id`: 404 (`denyAsNotFound`), não 403.
+
+Nomes Spatie (gates): `{recurso}.{verbo}` — `quotes.update`, `quotes.send`, `invoices.register-payment`. `$user->can('update', $quote)` resolve a **policy**; `$user->can('quotes.update')` é o gate Spatie **dentro** da policy. Não inverter no Livewire.
 
 ---
 
@@ -884,7 +919,7 @@ Rotas autenticadas em `routes/web.php` (`auth`, `verified`). Componentes em clas
 | `Livewire\Settings\...` | já vem no kit (perfil, senha, aparência) |
 | `dashboard` (view) | KPIs REL-01..03 |
 
-Layout sidebar Flux (`resources/views/layouts/app.blade.php`). Listagens: trait `Livewire\WithPagination`, `when()` + `whereLike`/`whereAny` + `paginate(15)`, `orderBy` só com coluna na allowlist, `<flux:pagination :paginator="$items" />`. Ações de status chamam services + `DB::transaction`. Testes: `livewire(...)` + `actingAs`. Assert no **banco**.
+Layout sidebar Flux (`resources/views/layouts/app.blade.php`). Listagens: trait `Livewire\WithPagination`, `when()` + `whereLike`/`whereAny` + `paginate(15)`, `orderBy` só com coluna na allowlist, `<flux:pagination :paginator="$items" />`. Ações de status: `$this->authorize()` **depois** `QuoteService` + `DB::transaction`. Botões com `@can`. Testes: `livewire(...)` + `actingAs`. Assert no **banco** e `assertForbidden()` por papel.
 
 ---
 
@@ -968,7 +1003,7 @@ Ordem rígida — cada fase mergeável e testável.
 | Fase | Entrega | Critério de pronto |
 |---|---|---|
 | **0** | Starter kit Livewire + Blade (classe) + Fortify sem registro + `MustVerifyEmail` + locale pt_BR + Eloquent `shouldBeStrict` | `/login` e `/dashboard` funcionam, `/register` 404, e-mail não verificado não entra no painel, `/up` 200, `php artisan test` verde |
-| **1** | Company, users, roles, settings | AUTH-* |
+| **1** | Company, users, papéis Spatie, `UserPolicy` / `CompanyPolicy` | AUTH-* |
 | **2** | Clientes + contatos | CLI-* |
 | **3** | Categorias e serviços | CAT-* |
 | **4** | Orçamentos + itens + totais + PDF + estados + revisão + job expirar | ORC-* |
@@ -1061,7 +1096,7 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 | Telescope | https://laravel.com/docs/13.x/telescope |
 | Pulse | https://laravel.com/docs/13.x/pulse |
 | Deployment (`optimize`, `/up`, Cloud/Forge) | https://laravel.com/docs/13.x/deployment |
-| Authorization (policies) | https://laravel.com/docs/13.x/authorization |
+| Authorization (policies, `authorize`, `@can`, `denyAsNotFound`) | https://laravel.com/docs/13.x/authorization |
 | Testing (Pest / Feature) | https://laravel.com/docs/13.x/testing |
 | Mail / Notifications | https://laravel.com/docs/13.x/mail · https://laravel.com/docs/13.x/notifications |
 | Laravel Boost | https://laravel.com/docs/13.x/boost |
