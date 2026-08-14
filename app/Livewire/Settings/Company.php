@@ -58,7 +58,7 @@ class Company extends Component
 
     public function mount(): void
     {
-        $company = $this->record;
+        $company = $this->record();
 
         $this->authorize('view', $company);
 
@@ -79,7 +79,7 @@ class Company extends Component
 
     public function save(): void
     {
-        $company = $this->record;
+        $company = $this->record();
 
         $this->authorize('update', $company);
 
@@ -140,6 +140,6 @@ class Company extends Component
     #[Computed]
     public function canUpdate(): bool
     {
-        return Auth::user()?->can('update', $this->record) ?? false;
+        return Auth::user()?->can('update', $this->record()) ?? false;
     }
 }

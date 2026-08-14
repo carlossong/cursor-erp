@@ -26,7 +26,7 @@ class CompanyFactory extends Factory
             'address' => [
                 'street' => fake()->streetName(),
                 'number' => fake()->buildingNumber(),
-                'complement' => fake()->optional()->secondaryAddress(),
+                'complement' => fake()->optional()->word(),
                 'district' => fake()->words(2, true),
                 'city' => fake()->city(),
                 'state' => fake()->regexify('[A-Z]{2}'),

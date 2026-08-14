@@ -21,20 +21,20 @@ Ver `tasks/todo.md`.
 
 ### Checkpoint: Foundation (Tasks 1–2)
 
-- [ ] `User::factory()` cria `company_id`; testes de auth da Fase 0 continuam verdes
-- [ ] `php artisan test` verde
+- [x] `User::factory()` cria `company_id`; testes de auth da Fase 0 continuam verdes
+- [x] `php artisan test` verde
 
 ### Checkpoint: Authz de sessão (Tasks 3–4)
 
-- [ ] Inativo não entra; sessão aberta é encerrada
+- [x] Inativo não entra; sessão aberta é encerrada
 
 ### Checkpoint: Papéis (Tasks 5–6)
 
-- [ ] Cinco papéis seedáveis; `CompanyPolicy` / `UserPolicy` cobertos por Pest
+- [x] Cinco papéis seedáveis; `CompanyPolicy` / `UserPolicy` cobertos por Pest
 
 ### Checkpoint: UI admin (Tasks 7–8)
 
-- [ ] Admin edita empresa e cria usuário interno (Livewire + Flux)
+- [x] Admin edita empresa e cria usuário interno (Livewire + Flux)
 
 ## Risks and Mitigations
 
