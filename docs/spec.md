@@ -71,6 +71,9 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - Rotas manuais `password.request` / `password.email` / `password.reset` / `password.update` ou `Password::sendResetLink` no `routes/web.php`. Fortify já registra ([passwords](https://laravel.com/docs/13.x/passwords)).
 - Driver `cache` para tokens de reset (`artisan cache:clear` apagaria os tokens). Tabela `password_reset_tokens`.
 - `Hash::make` em `ResetUserPassword` — o cast `hashed` já hasheia; `CompletePasswordReset` do Fortify rotaciona `remember_token`.
+- `Route::resource` / controllers de domínio. UI é `Route::livewire` + `Route::view`. Sem `routes/api.php` até o P1.
+- `{quote:number}` / `#[RouteKey('number')]` — número comercial não é único global. Binding pelo `id`.
+- `Route::any`, `withRouting(using:)`, Folio, subdomain, URL hardcoded no lugar de `route()`.
 
 ### 1.2 Diagrama de contexto
 
@@ -87,11 +90,11 @@ flowchart TB
 
 ### 1.3 Convenções Laravel 13 que esta spec segue
 
-Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [verification](https://laravel.com/docs/13.x/verification), [passwords](https://laravel.com/docs/13.x/passwords), [hashing](https://laravel.com/docs/13.x/hashing), [authorization](https://laravel.com/docs/13.x/authorization), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
+Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [verification](https://laravel.com/docs/13.x/verification), [passwords](https://laravel.com/docs/13.x/passwords), [hashing](https://laravel.com/docs/13.x/hashing), [authorization](https://laravel.com/docs/13.x/authorization), [routing](https://laravel.com/docs/13.x/routing), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
 
 1. **Criar o app** com `laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction`.
 2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). App autenticado em `/dashboard`. Telescope só nesse ambiente.
-3. **Bootstrap:** `bootstrap/app.php` + `bootstrap/providers.php`. Auth: Fortify (`config/fortify.php`). Redirects em `withMiddleware`: `redirectGuestsTo(route('login'))`, `redirectUsersTo(route('dashboard'))`; `authenticateSessions()` para invalidar outras sessões ([authentication](https://laravel.com/docs/13.x/authentication#protecting-routes)).
+3. **Bootstrap:** `bootstrap/app.php` + `bootstrap/providers.php`. `withRouting(web, commands, health: '/up')`. Auth: Fortify. Redirects: `redirectGuestsTo(route('login'))`, `redirectUsersTo(route('dashboard'))`; `authenticateSessions()`; `trustHosts()` ([routing](https://laravel.com/docs/13.x/routing#the-default-route-files)).
 4. **Schedule** em `routes/console.php` (`Schedule::job(...)->dailyAt('01:00')`), não em `app/Console/Kernel.php` (não existe mais no skeleton). Tokens de reset: `Schedule::command('auth:clear-resets')->everyFifteenMinutes()` ([passwords](https://laravel.com/docs/13.x/passwords#deleting-expired-tokens)).
 5. **Jobs** com atributos PHP 8 do framework: `#[Tries(5)]`, `#[Backoff(60)]`, `#[Timeout(120)]`. Roteamento central: `Queue::route(GenerateDocumentPdfJob::class, connection: 'redis', queue: 'pdfs')`.
 6. **Policies** com `php artisan make:policy QuotePolicy --model=Quote` (ou `make:model Quote -mfs --policy`). Discovery automática (`app/Policies`). Livewire: `$this->authorize('update', $quote)` / `create` com `Quote::class`. Blade: `@can`. 403 vira `AuthorizationException` ([authorization](https://laravel.com/docs/13.x/authorization)).
@@ -108,10 +111,11 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 17. **Verificação de e-mail** `MustVerifyEmail` + coluna `email_verified_at` + middleware `verified` no painel. Rotas Fortify (`verification.*`). Admin cria usuário já verificado; troca de e-mail zera a verificação e reenvia o link ([verification](https://laravel.com/docs/13.x/verification)).
 18. **Hashing** bcrypt (`HASH_DRIVER=bcrypt`, `BCRYPT_ROUNDS=12`). Senha no `User` com cast `hashed` — sem `Hash::make` no assign. Rehash no login. `HASH_VERIFY` ligado. Testes: `BCRYPT_ROUNDS=4` ([hashing](https://laravel.com/docs/13.x/hashing)).
 19. **Reset de senha** Fortify (`Features::resetPasswords()`). Broker `users`, driver `database`, token 60 min, throttle 60 s. `trustHosts()` no bootstrap. Sem rotas manuais ([passwords](https://laravel.com/docs/13.x/passwords)).
+20. **Rotas** em `routes/web.php` (grupo `web`: sessão + CSRF) + `routes/console.php`. Painel: `Route::livewire` / `Route::view` com `->name()`. `{quote}` = implicit binding pelo `id`. Sem `api.php` até `install:api`. Deploy: `route:cache` via `optimize` ([routing](https://laravel.com/docs/13.x/routing)).
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
-Fontes: Eloquent, Queues, Mail, Notifications, Errors, Livewire, Fortify, Authorization, Hashing, starter kit.
+Fontes: Eloquent, Queues, Mail, Notifications, Errors, Livewire, Fortify, Authorization, Hashing, Routing, starter kit.
 
 **Criação (desvio consciente do playbook de agentes)**
 
@@ -270,6 +274,24 @@ Fortify já registra as rotas: `password.request` / `password.email` (pedir link
 | E-mail | Notification `ResetPassword` padrão. Tradução em `lang/pt_BR.json` + `lang/pt_BR/passwords.php`. Sem `createUrlUsing` / notification custom no MVP. |
 | Depois do reset | Redirect para `login` (já no teste do kit). |
 
+**Rotas** ([routing](https://laravel.com/docs/13.x/routing))
+
+Arquivos: `routes/web.php` (grupo `web`: sessão, cookie, CSRF) e `routes/console.php`. Health: `/up` no `withRouting`. Fortify registra login/reset/verify. `routes/settings.php` entra via `require` em `web.php` — mesmo stack `web`. Arquivos extras de domínio (`quotes.php`) também por `require` **dentro** do grupo `auth`+`verified`, não `then:` / `using:` no bootstrap.
+
+| Tema | Como |
+|---|---|
+| Página estática | `Route::view('/', 'welcome')->name('home')`; dashboard idem. |
+| Livewire | `Route::livewire('quotes/{quote}', Show::class)->name('quotes.show')`. Sem `Route::resource` / controller. |
+| Nome | Toda rota de app tem `->name()`. Links: `route('quotes.show', $quote)`, `to_route(...)`. Nomes únicos. |
+| Grupo | `Route::middleware(['auth', 'verified'])->group(...)`. Prefix de URI só se o módulo pedir (`settings/` já no path). Sem subdomain. |
+| Binding | `{quote}` type-hint `Quote $quote` (PK `id`). 404 se não existir. **Não** `{quote:number}` nem `#[RouteKey]`. Nested filho: `->scopeBindings()`. Soft delete (`Customer`): sem `withTrashed()` nas rotas do painel. |
+| Policy na rota | `->can('viewAny', Quote::class)` / `->can('view', 'quote')` + `$this->authorize` no Livewire. |
+| Redirect | `Route::redirect('settings', 'settings/profile')` (302). `permanentRedirect` só para URL morta de verdade. |
+| Verbos | Livewire actions, não `PUT`/`PATCH` REST. Forms Blade de auth: `@csrf`. Sem `Route::any`. |
+| Rate limit | Fortify (login/2FA/passkeys). Sem throttle extra no painel autenticado. Público (P1) ganha limiter próprio. |
+| Cache | `php artisan optimize` em prod (`route:cache`). Listar: `php artisan route:list --except-vendor`. |
+| API / CORS | `install:api` no P1. Sem `routes/api.php` agora. |
+
 **Verificação de e-mail** ([verification](https://laravel.com/docs/13.x/verification))
 
 Fortify já registra as três rotas da doc: `verification.notice` (`/email/verify`), `verification.verify` (`signed` + `auth`), `verification.send` (throttle `6,1`). View: `Fortify::verifyEmailView` → `livewire.auth.verify-email`. **Não** reimplementar `EmailVerificationRequest` no `routes/web.php`.
@@ -366,7 +388,9 @@ resources/views/
   livewire/
   pdf/
 lang/pt_BR.json
+lang/pt_BR/passwords.php
 routes/web.php
+routes/settings.php
 routes/console.php
 docs/prd.md
 docs/spec.md
@@ -960,17 +984,17 @@ Fatura: idem + vencimento/parcelas + PIX/dados bancários. **Não** usar a palav
 
 ## 13. Livewire + Blade — telas (MVP)
 
-Rotas autenticadas em `routes/web.php` (`auth`, `verified`). Componentes em classe:
+Rotas autenticadas em `routes/web.php` (`auth`, `verified`). Componentes em classe. URLs nomeadas + implicit binding:
 
-| Componente | Função |
-|---|---|
-| `Livewire\Customers\Index` / `Edit` | clientes + contatos |
-| `Livewire\Services\Index` / `Edit` | catálogo |
-| `Livewire\Quotes\Index` / `Edit` / `Show` | orçamentos + ações de status |
-| `Livewire\WorkOrders\Index` / `Show` | OS + apontamentos |
-| `Livewire\Invoices\Index` / `Show` | faturas, parcelas, pagamentos |
-| `Livewire\Settings\...` | já vem no kit (perfil, senha, aparência) |
-| `dashboard` (view) | KPIs REL-01..03 |
+| Componente | Rota | Nome |
+|---|---|---|
+| `Livewire\Customers\Index` / `Edit` | `/customers`, `/customers/{customer}/edit` | `customers.index` / `customers.edit` |
+| `Livewire\Services\Index` / `Edit` | `/services`, `/services/{service}/edit` | `services.index` / `services.edit` |
+| `Livewire\Quotes\Index` / `Edit` / `Show` | `/quotes`, `/quotes/{quote}/edit`, `/quotes/{quote}` | `quotes.*` |
+| `Livewire\WorkOrders\Index` / `Show` | `/work-orders`, `/work-orders/{workOrder}` | `work-orders.*` |
+| `Livewire\Invoices\Index` / `Show` | `/invoices`, `/invoices/{invoice}` | `invoices.*` |
+| `Livewire\Settings\...` | `routes/settings.php` | `profile.edit`, `security.edit`, `appearance.edit` |
+| `dashboard` (view) | `/dashboard` | `dashboard` |
 
 Layout sidebar Flux (`resources/views/layouts/app.blade.php`). Listagens: trait `Livewire\WithPagination`, `when()` + `whereLike`/`whereAny` + `paginate(15)`, `orderBy` só com coluna na allowlist, `<flux:pagination :paginator="$items" />`. Ações de status: `$this->authorize()` **depois** `QuoteService` + `DB::transaction`. Botões com `@can`. Testes: `livewire(...)` + `actingAs`. Assert no **banco** e `assertForbidden()` por papel.
 
@@ -1133,6 +1157,7 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 | Email verification (`MustVerifyEmail`, `verified`) | https://laravel.com/docs/13.x/verification |
 | Hashing (bcrypt, `hashed` cast, rehash, `HASH_VERIFY`) | https://laravel.com/docs/13.x/hashing |
 | Resetting passwords (broker, tokens, `auth:clear-resets`) | https://laravel.com/docs/13.x/passwords |
+| Routing (`web.php`, named routes, implicit binding) | https://laravel.com/docs/13.x/routing |
 | Fortify (auth do kit) | https://laravel.com/docs/13.x/fortify |
 | Installation (`laravel new`, `composer run dev`) | https://laravel.com/docs/13.x/installation |
 | Playbook de agentes (default React — **não** usamos) | https://laravel.com/for/agents |
