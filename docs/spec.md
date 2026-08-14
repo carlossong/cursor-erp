@@ -81,6 +81,12 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - `EnsureUserHasRole` / `role:` como modelo de autorização do domínio. Papéis = Spatie **dentro** da policy. Alias `can` (e `role:` do Spatie, se existir) só como camada extra.
 - `priority()` customizado no MVP, salvo um middleware novo que **tenha** de correr *antes* de `SubstituteBindings`.
 - Middleware terminável (`terminate`) e classes vazias “por precaução”. `make:middleware` só com comportamento concreto.
+- `preventRequestForgery(originOnly: true)` no MVP — origin check só funciona em HTTPS; local HTTP e browsers antigos precisam do fallback de token. `originOnly` responde **403**, não 419.
+- `preventRequestForgery(allowSameSite: true)` — sem subdomínio no ERP.
+- `preventRequestForgery(except: …)` em rotas do painel, Fortify ou Livewire. Webhook (P1) fica **fora** do grupo `web`, não com exceção no CSRF do painel.
+- `$middleware->validateCsrfTokens()` (API antiga, deprecated). Sem `VerifyCsrfToken` / `$except` no Kernel.
+- `<meta name="csrf-token">` + jQuery/`$.ajaxSetup`. UI é Livewire; o framework já manda `X-XSRF-TOKEN` / o campo `_token`.
+- Sanctum SPA CSRF no MVP. API HTTP só no P1 (`install:api`).
 
 ### 1.2 Diagrama de contexto
 
@@ -97,7 +103,7 @@ flowchart TB
 
 ### 1.3 Convenções Laravel 13 que esta spec segue
 
-Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [verification](https://laravel.com/docs/13.x/verification), [passwords](https://laravel.com/docs/13.x/passwords), [hashing](https://laravel.com/docs/13.x/hashing), [authorization](https://laravel.com/docs/13.x/authorization), [routing](https://laravel.com/docs/13.x/routing), [middleware](https://laravel.com/docs/13.x/middleware), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
+Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [verification](https://laravel.com/docs/13.x/verification), [passwords](https://laravel.com/docs/13.x/passwords), [hashing](https://laravel.com/docs/13.x/hashing), [authorization](https://laravel.com/docs/13.x/authorization), [routing](https://laravel.com/docs/13.x/routing), [middleware](https://laravel.com/docs/13.x/middleware), [csrf](https://laravel.com/docs/13.x/csrf), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
 
 1. **Criar o app** com `laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction`.
 2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). App autenticado em `/dashboard`. Telescope só nesse ambiente.
@@ -120,10 +126,11 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 19. **Reset de senha** Fortify (`Features::resetPasswords()`). Broker `users`, driver `database`, token 60 min, throttle 60 s. `trustHosts()` no bootstrap. Sem rotas manuais ([passwords](https://laravel.com/docs/13.x/passwords)).
 20. **Rotas** em `routes/web.php` (grupo `web`: sessão + CSRF) + `routes/console.php`. Painel: `Route::livewire` / `Route::view` com `->name()`. `{quote}` = implicit binding pelo `id`. Sem `api.php` até `install:api`. Deploy: `route:cache` via `optimize` ([routing](https://laravel.com/docs/13.x/routing)).
 21. **Middleware** em `bootstrap/app.php` (`append` / `web(append:)` / `alias`). Grupo `web` default (EncryptCookies, sessão, `PreventRequestForgery`, `SubstituteBindings`). Aliases: `auth`, `verified`, `password.confirm`, `can`, `signed`, `throttle`, `guest`. Fase 1: `EnsureUserIsActive` quando existir `users.is_active`. Sem `use()` / `group('web')` substituindo o stack ([middleware](https://laravel.com/docs/13.x/middleware)).
+22. **CSRF** `PreventRequestForgery` no grupo `web`. Dois níveis: `Sec-Fetch-Site` (same-origin) e token de sessão. Forms Blade POST/PUT/PATCH/DELETE: `@csrf`. Livewire manda o token sozinho. Sem `except` / `originOnly` / `allowSameSite` no MVP. Testes: CSRF desligado automaticamente ([csrf](https://laravel.com/docs/13.x/csrf)).
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
-Fontes: Eloquent, Queues, Mail, Notifications, Errors, Livewire, Fortify, Authorization, Hashing, Routing, Middleware, starter kit.
+Fontes: Eloquent, Queues, Mail, Notifications, Errors, Livewire, Fortify, Authorization, Hashing, Routing, Middleware, CSRF, starter kit.
 
 **Criação (desvio consciente do playbook de agentes)**
 
@@ -319,6 +326,22 @@ Já alinhado no kit (não desfazer): `web.php` recebe o grupo **`web`** (Encrypt
 | Hosts / proxy | Manter `trustHosts()`. `trustProxies` só se o ERP for atrás de load balancer. |
 | Fase 1 | `EnsureUserIsActive`: se `$request->user()` existir e `is_active === false`, logout + invalidar sessão + redirect `login`. Registrar no grupo `auth`+`verified` (ou `web(append:)` com *early return* se guest). Login em si: Fortify. Criar a classe **junto** da migration `users.is_active` — não agora. |
 
+**CSRF** ([csrf](https://laravel.com/docs/13.x/csrf))
+
+`PreventRequestForgery` já está no grupo **`web`**. Protege `POST` / `PUT` / `PATCH` / `DELETE` em duas camadas: (1) header `Sec-Fetch-Site` same-origin (browsers modernos em HTTPS) — passa sem checar token; (2) se a origem não passa, valida o token da sessão (`csrf_token()` / `$request->session()->token()`). Cookie `XSRF-TOKEN` (encriptado) sai em toda resposta; header `X-XSRF-TOKEN` ou `X-CSRF-TOKEN` também valem. **Não** chamar `preventRequestForgery()` no `bootstrap/app.php` só para “ligar” — o default já cobre o painel.
+
+| Tema | Como |
+|---|---|
+| Forms Blade | Todo form HTML POST/PUT/PATCH/DELETE leva `@csrf` (campo `_token`). Já no kit: login, reset, 2FA, verify-email, logout. |
+| Livewire | Ações `wire:submit` / `$this->…` **não** precisam de `@csrf` no form — o runtime manda o token. Form clássico (logout Fortify) **precisa**. |
+| Logout | POST `route('logout')` com `@csrf`. Action Livewire também faz `Session::invalidate()` + `Session::regenerateToken()`. |
+| Cookie | `SESSION_SAME_SITE=lax` (default). Não `none` sem HTTPS + `Secure`. Não desligar o cookie `XSRF-TOKEN`. |
+| Origem | Sem `originOnly: true` (HTTP local / browsers sem `Sec-Fetch-Site`; mismatch vira 403 em vez de 419). Sem `allowSameSite: true` (não há subdomínio). |
+| Exceções | Sem `except:` no MVP. Webhook P1 (NFS-e, etc.) entra em arquivo **fora** de `web.php`, não com buraco no CSRF do painel. |
+| SPA / AJAX | Sem Sanctum SPA, sem jQuery, sem `<meta name="csrf-token">`. |
+| Testes | CSRF **desligado** automaticamente. Não assertar 419 no Pest Feature; não `withoutMiddleware(PreventRequestForgery)` “por hábito”. |
+| API (P1) | `install:api` + Sanctum. Até lá, o browser fica no grupo `web` com CSRF. |
+
 **Verificação de e-mail** ([verification](https://laravel.com/docs/13.x/verification))
 
 Fortify já registra as três rotas da doc: `verification.notice` (`/email/verify`), `verification.verify` (`signed` + `auth`), `verification.send` (throttle `6,1`). View: `Fortify::verifyEmailView` → `livewire.auth.verify-email`. **Não** reimplementar `EmailVerificationRequest` no `routes/web.php`.
@@ -373,6 +396,7 @@ Mailables e `Notification` com `ShouldQueue`. Local: `MAIL_MAILER=log`.
 - Rate limit no login (Fortify, e-mail + IP).
 - Senha: cast `hashed` (bcrypt 12); confirmação recente em telas sensíveis (`password.confirm`).
 - Toda ação Livewire de domínio: `$this->authorize()` (403) ou `denyAsNotFound()` (outra empresa).
+- CSRF: `PreventRequestForgery` no grupo `web`; forms Blade com `@csrf`; sem `except` no painel.
 
 **CI**
 
@@ -1187,6 +1211,7 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 | Resetting passwords (broker, tokens, `auth:clear-resets`) | https://laravel.com/docs/13.x/passwords |
 | Routing (`web.php`, named routes, implicit binding) | https://laravel.com/docs/13.x/routing |
 | Middleware (`bootstrap/app.php`, grupo `web`, aliases) | https://laravel.com/docs/13.x/middleware |
+| CSRF (`PreventRequestForgery`, `@csrf`, origin + token) | https://laravel.com/docs/13.x/csrf |
 | Fortify (auth do kit) | https://laravel.com/docs/13.x/fortify |
 | Installation (`laravel new`, `composer run dev`) | https://laravel.com/docs/13.x/installation |
 | Playbook de agentes (default React — **não** usamos) | https://laravel.com/for/agents |
