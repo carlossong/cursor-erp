@@ -2,7 +2,7 @@
 
 Sistema Laravel para gestão de empresa de prestação de serviços: **orçamento → ordem de serviço → faturamento → recebimento**.
 
-UI: **Livewire 4 + Blade + Flux UI** (starter kit oficial, componentes em classe). Sem Filament e sem SPA.
+UI: **Livewire 4 + Blade + Flux UI** ([starter kit oficial](https://laravel.com/docs/13.x/starter-kits#livewire), componentes em classe). Sem Filament, sem SPA, sem Teams/WorkOS do kit.
 
 ## Documentos
 
@@ -21,9 +21,9 @@ npm install && npm run build
 composer run dev
 ```
 
-Painel autenticado: `/dashboard` · login: `/login` · healthcheck: `/up`.
+Painel autenticado: `/dashboard` (`auth` + `verified`) · login: `/login` · healthcheck: `/up`.
 
-Usuários internos são criados pelo admin — o registro público está desligado.
+Usuários internos são criados pelo admin — o registro público está desligado. 2FA (TOTP) e passkeys ficam disponíveis em Configurações.
 
 ## Stack
 

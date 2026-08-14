@@ -18,7 +18,7 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 | Banco | PostgreSQL 16 | Laravel 13 suporta PG 10+; JSONB, constraints, `lockForUpdate` ([database](https://laravel.com/docs/13.x/database)) |
 | Cache / fila | Redis; Horizon em staging/prod | filas Redis/database oficiais; `Queue::route` para jobs de PDF ([queues](https://laravel.com/docs/13.x/queues)) |
 | UI interna | **Livewire 4 + Blade + Flux UI 2** (componentes em classe) | starter kit oficial ([starter kits](https://laravel.com/docs/13.x/starter-kits#livewire), [frontend](https://laravel.com/docs/13.x/frontend#livewire)) |
-| Auth | **Fortify** + Spatie Permission + **Policies** Laravel | kit já usa Fortify; sem registro público ([Fortify](https://laravel.com/docs/13.x/starter-kits#authentication)) |
+| Auth | **Fortify** + Spatie Permission + **Policies** Laravel | kit oficial: login, reset, verificação de e-mail, 2FA, passkeys; **sem** registro público ([starter kits — authentication](https://laravel.com/docs/13.x/starter-kits#authentication)) |
 | PDF | `barryvdh/laravel-dompdf` (MVP) | A4 simples; Browsershot se o layout exigir |
 | Storage | `local` em dev; S3-compatível em prod | `php artisan storage:link` para anexos públicos |
 | Front público | nenhum no MVP | link de aprovação = P1 |
@@ -39,10 +39,12 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 
 - **Starter kit React/Vue/Svelte.** O playbook [laravel.com/for/agents](https://laravel.com/for/agents) defaulta `--react`. Este produto é backoffice em PHP: **`--livewire --livewire-class-components`**.
 - **Filament.** A UI é Livewire + Blade + Flux; Resources/painel `/admin` não entram.
-- **Volt / SFC.** Componentes em **classe** (`app/Livewire`) + view Blade (`resources/views/livewire`), não single-file.
+- **Volt / SFC.** Componentes em **classe** (`app/Livewire`) + view Blade (`resources/views/livewire`), não single-file. A árvore `resources/views/pages` da [doc do kit Livewire](https://laravel.com/docs/13.x/starter-kits#livewire-customization) é a variante Volt; não usamos.
+- **Teams do starter kit.** O kit Livewire *pode* nascer com teams (`/{current_team}/dashboard`). Este ERP **não** usa isso: uma empresa no MVP, `company_id` nas tabelas, papéis Spatie.
+- **WorkOS AuthKit.** Login, senha, reset e 2FA são Fortify nativo. Sem SSO/social no MVP.
 - **Telescope em produção.** É ferramenta de debug local.
 - Octane, Passport, Scout, Cashier, Reverb, Folio, Mix, Homestead, Nova — fora do problema.
-- Registro público no painel (`->registration()`). Usuários são criados pelo admin.
+- Registro público no painel (`Features::registration()`). Usuários são criados pelo admin.
 - Microserviços, DDD tático pesado, event sourcing, `nwidart/laravel-modules`.
 - Soft delete em **documentos numerados**: status `cancelado`. Soft delete só em cadastros se fizer sentido.
 - Money como `float`. **`decimal(14,2)`** / `decimal(14,4)` + cast Eloquent `decimal:2` / `decimal:4`. Totais no backend, `ROUND_HALF_UP`.
@@ -104,13 +106,26 @@ O kit já usa `#[Fillable]` / `#[Hidden]` no `User` (atributos Laravel 13) e cas
 
 PDF e e-mail: `ShouldQueue` + `->afterCommit()` depois de gravar o documento. `ShouldBeUnique` no PDF. Horizon em staging/prod; local o `composer run dev` já sobe worker.
 
-**Livewire 4 + Blade**
+**Livewire 4 + Blade** ([starter kits](https://laravel.com/docs/13.x/starter-kits#livewire))
 
-- Páginas e formulários em `app/Livewire` + `resources/views/livewire/*.blade.php`. Layouts em `resources/views/layouts` (sidebar Flux).
-- Auth: Fortify. `Features::registration()` **desligado**. Login `/login`, home autenticada `/dashboard`. MFA/2FA do kit = P1 (já está no Fortify, podemos manter desabilitado na UX até o P1).
+- Kit: Livewire 4, Tailwind, [Flux UI](https://fluxui.dev/). Código do kit vive no app (não se “atualiza” o kit — [FAQ](https://laravel.com/docs/13.x/starter-kits#faq-upgrade)).
+- Páginas e formulários em `app/Livewire` + `resources/views/livewire/*.blade.php` (class components). Layout autenticado: **sidebar** em `resources/views/layouts/app.blade.php` (default do kit). Header só se trocarmos para `<x-layouts::app.header>` **e** `flux:main container`.
+- Auth layout: **simple** em `resources/views/layouts/auth.blade.php`. Alternativas do kit: `card` e `split`.
 - Ações de status chamam `QuoteService` / `InvoiceService`, não gravam status no componente.
 - Testes Pest: `livewire(ListQuotes::class)` e HTTP tests nas rotas.
 - Anexos: upload Livewire/Blade + disco Laravel (`storage`).
+
+**Fortify (auth do kit)** ([authentication](https://laravel.com/docs/13.x/starter-kits#authentication), [enabling features](https://laravel.com/docs/13.x/starter-kits#enabling-and-disabling-features))
+
+| Feature | Neste ERP |
+|---|---|
+| `Features::registration()` | **Removido.** `/register` 404. Views de login só usam `Route::has('register')`. |
+| `Features::resetPasswords()` | Ligado (AUTH-02). |
+| `Features::emailVerification()` | Ligado. `User` implementa `MustVerifyEmail`. Rotas do painel: `auth` + `verified`. Admin cria usuário já verificado. |
+| `Features::twoFactorAuthentication()` | Ligado (default do kit: `confirm` + `confirmPassword`). TOTP opcional em Configurações. |
+| `Features::passkeys()` | Ligado (default do kit). |
+
+Ações em `app/Actions/Fortify` (`CreateNewUser`, `ResetUserPassword`). Sem registro público, `CreateNewUser` **não** é o caminho de cadastro — Fase 1 cria usuários pelo admin. Rate limit de login/2FA/passkeys em `FortifyServiceProvider` (5/min login). Home Fortify: `/dashboard`.
 
 **Mail / notificação (P1)**
 
@@ -631,7 +646,7 @@ Rotas autenticadas em `routes/web.php` (`auth`, `verified`). Componentes em clas
 | `Livewire\Settings\...` | já vem no kit (perfil, senha, aparência) |
 | `dashboard` (view) | KPIs REL-01..03 |
 
-Layout sidebar Flux. Ações de status chamam services + `DB::transaction`. Testes: `livewire(...)` + `actingAs`. Assert no **banco**.
+Layout sidebar Flux (`resources/views/layouts/app.blade.php`). Ações de status chamam services + `DB::transaction`. Testes: `livewire(...)` + `actingAs`. Assert no **banco**.
 
 ---
 
@@ -714,7 +729,7 @@ Ordem rígida — cada fase mergeável e testável.
 
 | Fase | Entrega | Critério de pronto |
 |---|---|---|
-| **0** | Starter kit Livewire + Blade (classe) + Fortify sem registro + locale pt_BR + Eloquent strictness | `/login` e `/dashboard` funcionam, `/register` 404, `/up` 200, `php artisan test` verde |
+| **0** | Starter kit Livewire + Blade (classe) + Fortify sem registro + `MustVerifyEmail` + locale pt_BR + Eloquent strictness | `/login` e `/dashboard` funcionam, `/register` 404, e-mail não verificado não entra no painel, `/up` 200, `php artisan test` verde |
 | **1** | Company, users, roles, settings | AUTH-* |
 | **2** | Clientes + contatos | CLI-* |
 | **3** | Categorias e serviços | CAT-* |
@@ -751,6 +766,7 @@ Integração NFS-e entra como `NfseGateway` interface + adapter; nenhum provedor
 | Livewire 4 / Flux / Laravel 13 | starter kit oficial; `livewire/livewire:^4.1` |
 | Job dispara antes do commit | sempre `->afterCommit()` em PDF/e-mail após gravar documento |
 | Registro público | `Features::registration()` removido do Fortify |
+| Teams / WorkOS do kit | não usamos; `company_id` + Fortify nativo |
 | Upload grande em campo | limite 10 MB, mime allowlist imagem/PDF |
 
 ---
@@ -784,7 +800,8 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 |---|---|
 | Releases / política de suporte | https://laravel.com/docs/13.x/releases |
 | Upgrade 12 → 13 | https://laravel.com/docs/13.x/upgrade |
-| Starter kit Livewire | https://laravel.com/docs/13.x/starter-kits#livewire |
+| Starter kits (Livewire, layouts, Fortify, 2FA, FAQ) | https://laravel.com/docs/13.x/starter-kits |
+| Starter kit Livewire (customização) | https://laravel.com/docs/13.x/starter-kits#livewire-customization |
 | Frontend Livewire + Blade | https://laravel.com/docs/13.x/frontend |
 | Fortify (auth do kit) | https://laravel.com/docs/13.x/fortify |
 | Installation (`laravel new`, `composer run dev`) | https://laravel.com/docs/13.x/installation |

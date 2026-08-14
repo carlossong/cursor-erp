@@ -102,6 +102,8 @@ Prioridade: **P0** = MVP · **P1** = logo após o MVP · **P2** = evolução.
 | AUTH-03 | Papéis: `admin`, `comercial`, `operacao`, `financeiro`, `gestor` (ver matriz em [`spec.md`](./spec.md)). |
 | AUTH-04 | Cadastro da empresa prestadora: razão social, nome fantasia, CNPJ, IE/IM, endereço, e-mail, telefone, logotipo. |
 | AUTH-05 | Auditoria básica: quem criou/alterou registros críticos (orçamento, OS, fatura, pagamento). |
+| AUTH-06 | Verificação de e-mail obrigatória para o painel (`MustVerifyEmail` + middleware `verified`). Usuários criados pelo admin já entram verificados. |
+| AUTH-07 | 2FA (TOTP) e passkeys opcionais por usuário — vêm ligados no Fortify do starter kit; o operador ativa em Configurações. |
 
 ### 5.2 Clientes — P0
 
@@ -206,7 +208,7 @@ Prioridade: **P0** = MVP · **P1** = logo após o MVP · **P2** = evolução.
 | NFR-01 | Usuários simultâneos | Até 30 usuários internos no MVP sem degradação perceptível. |
 | NFR-02 | Performance de listagens | Páginas de listagem (orçamentos, OS, faturas) < 500 ms no p95 em dataset de 50k registros (com índices). |
 | NFR-03 | Disponibilidade | Web app único; jobs em fila; falha de job não corrompe status (reatentativa idempotente). |
-| NFR-04 | Segurança | HTTPS, CSRF, senhas com hash (`hashed` cast), Fortify + policies, `APP_DEBUG=false` em prod, sem registro público, logs de auditoria nos documentos. |
+| NFR-04 | Segurança | HTTPS, CSRF, senhas com hash (`hashed` cast), Fortify + policies, e-mail verificado no painel, 2FA/passkeys opcionais, `APP_DEBUG=false` em prod, sem registro público, logs de auditoria nos documentos. |
 | NFR-05 | LGPD | Base legal de cadastro de clientes; exclusão/anonimização sob demanda (admin); sem dado sensível de saúde no MVP. |
 | NFR-06 | Backup | Dump diário do banco (infra); uploads em disco/S3 com retenção. |
 | NFR-07 | Observabilidade | Telescope só local; Horizon + log em staging/prod; healthcheck `/up`; Pulse no P1. |
