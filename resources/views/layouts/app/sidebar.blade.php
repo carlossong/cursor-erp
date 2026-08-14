@@ -25,6 +25,11 @@
                             {{ __('Usuários') }}
                         </flux:sidebar.item>
                     @endcan
+                    @can('viewAny', App\Models\Service::class)
+                        <flux:sidebar.item icon="squares-2x2" :href="route('services.index')" :current="request()->routeIs('services.*') || request()->routeIs('service-categories.*')" wire:navigate>
+                            {{ __('Serviços') }}
+                        </flux:sidebar.item>
+                    @endcan
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

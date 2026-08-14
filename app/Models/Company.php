@@ -78,4 +78,20 @@ class Company extends Model
     {
         return $this->hasMany(User::class);
     }
+
+    /**
+     * @return HasMany<ServiceCategory, $this>
+     */
+    public function serviceCategories(): HasMany
+    {
+        return $this->hasMany(ServiceCategory::class);
+    }
+
+    /**
+     * @return HasMany<Service, $this>
+     */
+    public function services(): HasMany
+    {
+        return $this->hasMany(Service::class);
+    }
 }
