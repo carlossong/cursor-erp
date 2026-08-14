@@ -1,0 +1,4 @@
+upstream: https://github.com/addyosmani/agent-skills
+commit: df1edb2e05487d0aa6d93c747141e0aed1187f25
+date: 2026-08-14
+layout: .cursor/skills + .cursor/references
