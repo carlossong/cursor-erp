@@ -206,12 +206,13 @@ Prioridade: **P0** = MVP · **P1** = logo após o MVP · **P2** = evolução.
 | NFR-01 | Usuários simultâneos | Até 30 usuários internos no MVP sem degradação perceptível. |
 | NFR-02 | Performance de listagens | Páginas de listagem (orçamentos, OS, faturas) < 500 ms no p95 em dataset de 50k registros (com índices). |
 | NFR-03 | Disponibilidade | Web app único; jobs em fila; falha de job não corrompe status (reatentativa idempotente). |
-| NFR-04 | Segurança | HTTPS, CSRF, senhas com hash, autorização por policy, logs de auditoria nos documentos. |
+| NFR-04 | Segurança | HTTPS, CSRF, senhas com hash (`hashed` cast), `FilamentUser` + policies, `APP_DEBUG=false` em prod, logs de auditoria nos documentos. |
 | NFR-05 | LGPD | Base legal de cadastro de clientes; exclusão/anonimização sob demanda (admin); sem dado sensível de saúde no MVP. |
 | NFR-06 | Backup | Dump diário do banco (infra); uploads em disco/S3 com retenção. |
-| NFR-07 | Observabilidade | Log de aplicação + falhas de job; ambiente `local` / `staging` / `production`. |
+| NFR-07 | Observabilidade | Telescope só local; Horizon + log em staging/prod; healthcheck `/up`; Pulse no P1. |
 | NFR-08 | Acessibilidade / UX | Interface em português, formulários com validação clara, tabelas com filtro e paginação. |
 | NFR-09 | Impressão | PDFs de orçamento e fatura A4, com logo e dados da empresa. |
+| NFR-10 | Qualidade | Pint + Pest no CI; jobs de PDF/e-mail após `afterCommit`. |
 
 ---
 
@@ -254,7 +255,7 @@ Métricas-alvo após 30 dias de uso real (pós-implantação):
 | [`spec.md`](./spec.md) | Como (domínio, dados, APIs, stack Laravel) |
 | README do repositório | Porta de entrada do projeto |
 
-Próximo passo após aprovação deste planejamento: scaffold Laravel + módulo de identidade/empresa + clientes, na ordem da spec (fases de implementação).
+Próximo passo após aprovação deste planejamento: **Fase 0** — `laravel new` (Laravel 13 + Pest + Postgres) + Filament 5, na ordem da spec.
 
 ---
 

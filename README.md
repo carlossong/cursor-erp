@@ -18,9 +18,10 @@ Comercial emite orçamento em PDF, operação executa a OS, financeiro fatura e 
 ## Stack prevista
 
 - PHP 8.3–8.5 / Laravel 13
-- Filament 5 (Livewire 4) no backoffice
-- PostgreSQL 16 + Redis
-- Pest 4 para testes
-- Laravel Boost para agentes (Cursor)
+- Filament 5 (Livewire 4) no backoffice — **não** o starter kit React
+- PostgreSQL 16 + Redis (Sail no repo)
+- Pest 4 + Pint no CI
+- Horizon (filas) · Telescope (debug local) · Boost (Cursor)
+- Deploy: `optimize` + `filament:optimize` + healthcheck `/up`
 
-Detalhes e fases de implementação: [docs/spec.md](docs/spec.md).
+Detalhes e práticas do ecossistema: [docs/spec.md](docs/spec.md) (seções 1.4 e 22).
