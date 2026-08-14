@@ -71,7 +71,7 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - Rotas manuais `password.request` / `password.email` / `password.reset` / `password.update` ou `Password::sendResetLink` no `routes/web.php`. Fortify já registra ([passwords](https://laravel.com/docs/13.x/passwords)).
 - Driver `cache` para tokens de reset (`artisan cache:clear` apagaria os tokens). Tabela `password_reset_tokens`.
 - `Hash::make` em `ResetUserPassword` — o cast `hashed` já hasheia; `CompletePasswordReset` do Fortify rotaciona `remember_token`.
-- `Route::resource` / controllers de domínio. UI é `Route::livewire` + `Route::view`. Sem `routes/api.php` até o P1.
+- `Route::resource` / `apiResource` / `singleton` / `resourceVerbs` / `make:controller --resource|--api|--requests`. CRUD do painel é Livewire (`Route::livewire` / `Route::view`), não `QuoteController`. Sem `routes/api.php` até o P1.
 - `{quote:number}` / `#[RouteKey('number')]` — número comercial não é único global. Binding pelo `id`.
 - `Route::any`, `withRouting(using:)`, Folio, subdomain, URL hardcoded no lugar de `route()`.
 - `app/Http/Kernel.php`. Laravel 13 registra middleware só em `bootstrap/app.php` (`withMiddleware`) ([middleware](https://laravel.com/docs/13.x/middleware)).
@@ -87,6 +87,9 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - `$middleware->validateCsrfTokens()` (API antiga, deprecated). Sem `VerifyCsrfToken` / `$except` no Kernel.
 - `<meta name="csrf-token">` + jQuery/`$.ajaxSetup`. UI é Livewire; o framework já manda `X-XSRF-TOKEN` / o campo `_token`.
 - Sanctum SPA CSRF no MVP. API HTTP só no P1 (`install:api`).
+- `make:model Quote --all` (gera controller). Usar `-mfs --policy`.
+- `LoginController`, `HasMiddleware` / `#[Middleware]` / `#[WithoutMiddleware]` em classe de CRUD, `#[Authorize]` no Livewire (Livewire usa `$this->authorize()`).
+- Camada Repository injetada no controller (exemplo da doc). Domínio = Service + Eloquent.
 
 ### 1.2 Diagrama de contexto
 
@@ -103,7 +106,7 @@ flowchart TB
 
 ### 1.3 Convenções Laravel 13 que esta spec segue
 
-Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [verification](https://laravel.com/docs/13.x/verification), [passwords](https://laravel.com/docs/13.x/passwords), [hashing](https://laravel.com/docs/13.x/hashing), [authorization](https://laravel.com/docs/13.x/authorization), [routing](https://laravel.com/docs/13.x/routing), [middleware](https://laravel.com/docs/13.x/middleware), [csrf](https://laravel.com/docs/13.x/csrf), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
+Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [verification](https://laravel.com/docs/13.x/verification), [passwords](https://laravel.com/docs/13.x/passwords), [hashing](https://laravel.com/docs/13.x/hashing), [authorization](https://laravel.com/docs/13.x/authorization), [routing](https://laravel.com/docs/13.x/routing), [middleware](https://laravel.com/docs/13.x/middleware), [csrf](https://laravel.com/docs/13.x/csrf), [controllers](https://laravel.com/docs/13.x/controllers), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
 
 1. **Criar o app** com `laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction`.
 2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). App autenticado em `/dashboard`. Telescope só nesse ambiente.
@@ -127,10 +130,11 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 20. **Rotas** em `routes/web.php` (grupo `web`: sessão + CSRF) + `routes/console.php`. Painel: `Route::livewire` / `Route::view` com `->name()`. `{quote}` = implicit binding pelo `id`. Sem `api.php` até `install:api`. Deploy: `route:cache` via `optimize` ([routing](https://laravel.com/docs/13.x/routing)).
 21. **Middleware** em `bootstrap/app.php` (`append` / `web(append:)` / `alias`). Grupo `web` default (EncryptCookies, sessão, `PreventRequestForgery`, `SubstituteBindings`). Aliases: `auth`, `verified`, `password.confirm`, `can`, `signed`, `throttle`, `guest`. Fase 1: `EnsureUserIsActive` quando existir `users.is_active`. Sem `use()` / `group('web')` substituindo o stack ([middleware](https://laravel.com/docs/13.x/middleware)).
 22. **CSRF** `PreventRequestForgery` no grupo `web`. Dois níveis: `Sec-Fetch-Site` (same-origin) e token de sessão. Forms Blade POST/PUT/PATCH/DELETE: `@csrf`. Livewire manda o token sozinho. Sem `except` / `originOnly` / `allowSameSite` no MVP. Testes: CSRF desligado automaticamente ([csrf](https://laravel.com/docs/13.x/csrf)).
+23. **Controllers** não fazem o CRUD do painel. UI = Livewire. Exceção: invokable (`--invokable`) só para resposta binária (PDF/anexo). Sem `Route::resource`. Base vazia `app/Http/Controllers/Controller.php` fica como está ([controllers](https://laravel.com/docs/13.x/controllers)).
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
-Fontes: Eloquent, Queues, Mail, Notifications, Errors, Livewire, Fortify, Authorization, Hashing, Routing, Middleware, CSRF, starter kit.
+Fontes: Eloquent, Queues, Mail, Notifications, Errors, Livewire, Fortify, Authorization, Hashing, Routing, Middleware, CSRF, Controllers, starter kit.
 
 **Criação (desvio consciente do playbook de agentes)**
 
@@ -296,7 +300,7 @@ Arquivos: `routes/web.php` (grupo `web`: sessão, cookie, CSRF) e `routes/consol
 | Tema | Como |
 |---|---|
 | Página estática | `Route::view('/', 'welcome')->name('home')`; dashboard idem. |
-| Livewire | `Route::livewire('quotes/{quote}', Show::class)->name('quotes.show')`. Sem `Route::resource` / controller. |
+| Livewire | `Route::livewire('quotes/{quote}', Show::class)->name('quotes.show')`. Sem `Route::resource` / controller de CRUD. |
 | Nome | Toda rota de app tem `->name()`. Links: `route('quotes.show', $quote)`, `to_route(...)`. Nomes únicos. |
 | Grupo | `Route::middleware(['auth', 'verified'])->group(...)`. Prefix de URI só se o módulo pedir (`settings/` já no path). Sem subdomain. |
 | Binding | `{quote}` type-hint `Quote $quote` (PK `id`). 404 se não existir. **Não** `{quote:number}` nem `#[RouteKey]`. Nested filho: `->scopeBindings()`. Soft delete (`Customer`): sem `withTrashed()` nas rotas do painel. |
@@ -342,6 +346,22 @@ Já alinhado no kit (não desfazer): `web.php` recebe o grupo **`web`** (Encrypt
 | Testes | CSRF **desligado** automaticamente. Não assertar 419 no Pest Feature; não `withoutMiddleware(PreventRequestForgery)` “por hábito”. |
 | API (P1) | `install:api` + Sanctum. Até lá, o browser fica no grupo `web` com CSRF. |
 
+**Controllers** ([controllers](https://laravel.com/docs/13.x/controllers))
+
+A doc descreve CRUD em `app/Http/Controllers` + `Route::resource`. **Este ERP não usa isso no painel:** telas e ações de domínio são Livewire (`Route::livewire` / `Route::view`). O kit já traz `app/Http/Controllers/Controller.php` vazio (Laravel 13 não coloca mais `AuthorizesRequests` na base) — **não** encher de traits “por precaução” e **não** apagar.
+
+| Tema | Como |
+|---|---|
+| CRUD / UI | Livewire em `app/Livewire`. Sem `QuoteController` com `index`/`create`/`store`/`show`/`edit`/`update`/`destroy`. Sem `make:controller --resource` / `--api` / `--requests`. Sem `Route::resource` / `resources` / `apiResource` / `softDeletableResources`. |
+| Invokable | Única forma permitida no MVP: `php artisan make:controller DownloadQuotePdf --invokable` para **resposta binária** (PDF, anexo) quando um GET dedicado for melhor que `Storage::download` no Livewire. Rota: `Route::get('quotes/{quote}/pdf', DownloadQuotePdf::class)->name('quotes.pdf')` no grupo `auth`+`verified`. |
+| Binding / auth | Type-hint `Quote $quote` (PK `id`). Autorizar com `Gate::authorize('view', $quote)` ou `#[Authorize('view', 'quote')]`. Sem `findOrFail($id)` à mão. |
+| DI | Construtor ou método: injetar o **Service** (`QuoteService`), não um Repository. Container resolve o controller. |
+| Middleware | No **grupo de rotas**, não `HasMiddleware` / `#[Middleware]` / `middlewareFor` — não há resource controller. `#[WithoutMiddleware]` **nunca** em CSRF/`auth`. |
+| Resource extra | Sem nested `photos.comments`, `scoped`, `shallow`, `singleton` / `apiSingleton`, `resourceVerbs` (URLs em inglês: `/quotes/{quote}/edit`, não `/orcamentos/editar`). Sem `missing()` redirecionando 404 para a listagem — 404 fica 404. Sem `withTrashed()` nas rotas do painel. |
+| P1 API | Aí sim `Route::apiResource` + `--api` depois de `install:api`. Não agora. |
+
+Não criar o invokable de PDF nesta fase — só quando o job gravar `pdf_path` e a tela Show precisar do link.
+
 **Verificação de e-mail** ([verification](https://laravel.com/docs/13.x/verification))
 
 Fortify já registra as três rotas da doc: `verification.notice` (`/email/verify`), `verification.verify` (`signed` + `auth`), `verification.send` (throttle `6,1`). View: `Fortify::verifyEmailView` → `livewire.auth.verify-email`. **Não** reimplementar `EmailVerificationRequest` no `routes/web.php`.
@@ -381,7 +401,7 @@ Gates = ação sem recurso (dashboard). Policies = um model. Este ERP usa **poli
 | Teste | `actingAs` por papel; `livewire(…)->call('send')->assertForbidden()`; `$user->can('update', $quote)`. |
 | Spatie | Sem feature `teams` do pacote. Isolamento = `company_id` na policy. |
 
-`#[Authorize]` de controller **não** entra — não há controllers de domínio. Inertia share de permissions **não** entra.
+`#[Authorize]` de controller **não** entra no Livewire — lá é `$this->authorize()`. No invokable de PDF (quando existir), `#[Authorize('view', 'quote')]` ou `Gate::authorize` vale. Inertia share de permissions **não** entra.
 
 **Mail / notificação (P1)**
 
@@ -419,6 +439,7 @@ bootstrap/
   providers.php
 app/
   Enums/
+  Http/Controllers/    # base vazia; invokable só para PDF/anexo
   Http/Middleware/     # custom (Fase 1: EnsureUserIsActive)
   Models/
   Policies/
@@ -1032,6 +1053,8 @@ Conteúdo mínimo orçamento: logo, dados da empresa, cliente, número/revisão/
 
 Fatura: idem + vencimento/parcelas + PIX/dados bancários. **Não** usar a palavra “Nota Fiscal”. Título: **Fatura de serviços**.
 
+Download autenticado: preferir `Storage::download` na ação Livewire. Se a UI precisar de URL estável (abrir em nova aba), invokable `DownloadQuotePdf` / `DownloadInvoicePdf` — ver seção Controllers. Sem `QuoteController` resource.
+
 ---
 
 ## 13. Livewire + Blade — telas (MVP)
@@ -1053,6 +1076,8 @@ Layout sidebar Flux (`resources/views/layouts/app.blade.php`). Listagens: trait 
 ---
 
 ## 14. Validação (Form Requests / Livewire)
+
+Validação do painel: Livewire (`$this->validate()` / regras no componente). **Não** gerar Form Request via `make:controller --requests` — não há resource controller. Form Request só se um invokable HTTP (PDF/anexo) precisar validar query/input; o download típico não valida form.
 
 - CNPJ/CPF: algoritmo de dígitos (`league/iso3166` não cobre; usar regra custom ou `laravellegends/pt-br-validator`).
 - E-mail RFC.
@@ -1212,6 +1237,7 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 | Routing (`web.php`, named routes, implicit binding) | https://laravel.com/docs/13.x/routing |
 | Middleware (`bootstrap/app.php`, grupo `web`, aliases) | https://laravel.com/docs/13.x/middleware |
 | CSRF (`PreventRequestForgery`, `@csrf`, origin + token) | https://laravel.com/docs/13.x/csrf |
+| Controllers (Livewire no CRUD; invokable só PDF/anexo) | https://laravel.com/docs/13.x/controllers |
 | Fortify (auth do kit) | https://laravel.com/docs/13.x/fortify |
 | Installation (`laravel new`, `composer run dev`) | https://laravel.com/docs/13.x/installation |
 | Playbook de agentes (default React — **não** usamos) | https://laravel.com/for/agents |
