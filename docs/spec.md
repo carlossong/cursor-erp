@@ -51,6 +51,7 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - PK UUID/ULID, PK composta, `#[Unguarded]` / `$guarded = []`. Eloquent exige um `id` único; unique composto é índice extra, não PK.
 - `$table->enum()` nativo para status. Coluna `string` + cast PHP enum — alterar casos não exige `using()` no PostgreSQL nem quebra o sqlite dos testes.
 - Editar migration já rodada/commitada. `schema:dump --prune` só depois do MVP, se o diretório inflar.
+- `whereRaw` / `selectRaw` sem bindings; `orderBy` com nome de coluna do usuário; `DB::table()` no domínio (usar o model). Similarity/pgvector e `whereFullText` fora do MVP.
 - `routes/api.php` até o P1 (`install:api`). CSRF do painel permanece; Laravel 13 formalizou `PreventRequestForgery`.
 
 ### 1.2 Diagrama de contexto
@@ -68,7 +69,7 @@ flowchart TB
 
 ### 1.3 Convenções Laravel 13 que esta spec segue
 
-Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [eloquent](https://laravel.com/docs/13.x/eloquent), [migrations](https://laravel.com/docs/13.x/migrations), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
+Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [eloquent](https://laravel.com/docs/13.x/eloquent), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
 
 1. **Criar o app** com `laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction`.
 2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). App autenticado em `/dashboard`. Telescope só nesse ambiente.
@@ -81,6 +82,7 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 9. **Testes:** a maioria em `tests/Feature`. Rodar `php artisan test`. Paralelo depois, com `brianium/paratest`.
 10. **Boost** na criação (`laravel new … --boost`) para o Cursor consultar a doc na versão instalada.
 11. **Migrations** anônimas (`return new class extends Migration`), geradas por Artisan. Deploy: `php artisan migrate --force --isolated`. Testes sqlite com `foreign_key_constraints` ligado ([migrations](https://laravel.com/docs/13.x/migrations)).
+12. **Queries** via Eloquent (mesmo query builder). Bindings PDO; **nunca** coluna/`orderBy` vindo do request. Jobs: `lazyById`. Numeração: `lockForUpdate` + `increment` dentro de `DB::transaction` ([queries](https://laravel.com/docs/13.x/queries)).
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
@@ -122,7 +124,7 @@ Convenções deste ERP:
 | Soft delete | cadastros sim; Quote / WorkOrder / Invoice / Payment **não**. |
 | Revisão de orçamento | `$quote->replicate([...campos de status/envio...])` + copiar itens; `parent_id` e `revision + 1`. |
 | Observers | `php artisan make:observer` + `#[ObservedBy]` no model. Recalcular totais no `saving` do item. |
-| Jobs em lote | `lazyById()` (expirar orçamento, marcar fatura vencida). Não `all()`. `cursor()` não faz eager load. |
+| Jobs em lote | `lazyById()` (não `all()` / `cursor()`). Condições próprias **dentro de `where(function …)`** — o `lazyById` acrescenta `where id >`. |
 | Lookup | `findOrFail` / `firstOrFail` nas telas. Seeders podem usar `withoutEvents` se o observer não deve disparar. |
 | Factory | `HasFactory` em todo model de domínio. Inspecionar com `php artisan model:show`. |
 
@@ -138,6 +140,24 @@ Transações de agregado: `DB::transaction()`. `lockForUpdate()` na linha de `do
 - Índices na create: unique composto, `(company_id, status)`, colunas de job (`valid_until`, `due_date`). Nome explícito se o auto-nome estourar 63 chars no PG.
 - XOR da origem da fatura: unique nullable em `quote_id` e `work_order_id` + regra no `InvoiceService`. Sem `CHECK` cru (sqlite de teste).
 - SQLite dos testes: `DB_FOREIGN_KEYS=true` (`config/database.php` `foreign_key_constraints`). Produção: `migrate --force --isolated` ([isolating](https://laravel.com/docs/13.x/migrations#isolating-migration-execution)). Sem `schema:dump` no MVP.
+
+**Queries** ([query builder](https://laravel.com/docs/13.x/queries))
+
+Eloquent, não `DB::table()`, nas tabelas de domínio. O builder usa PDO — bindings automáticos. PDO **não** faz bind de nome de coluna: sort/filtro JSON path só com allowlist.
+
+| Uso | Como |
+|---|---|
+| Listagens Livewire | `when($this->status, …)`, busca `whereAny([...], 'like', …)` ou `whereLike` (case-insensitive). `orWhere` sempre agrupado em closure. |
+| Sort | allowlist (`number`, `valid_until`, `total`, `created_at`). Default `latest()`. |
+| Paginação | `paginate(15)` (NFR-08). Índice composto na mesma ordem do `orderBy`. |
+| Relação | `whereBelongsTo($customer)`; `whereIn('customer_id', Customer::query()->whereLike('name', …)->select('id'))` em vez de `whereHas` pesado. |
+| JSON endereço | gravar o objeto inteiro. `where('address_json->city', $city)` só se houver filtro de cidade. |
+| Dashboard REL-01..03 | **um** `selectRaw` com `count(case when …)` + bindings + `toBase()`. Não N `count()`. |
+| Jobs | `lazyById()` / `chunkById` se for `update` no loop. `cursor()` não eager-load. |
+| Numeração | `DB::transaction` + `lockForUpdate()` + `increment('last_number')` ([pessimistic locking](https://laravel.com/docs/13.x/queries#pessimistic-locking), [increment](https://laravel.com/docs/13.x/queries#increment-and-decrement)). |
+| Filtro repetido | `#[Scope]` no model; se aparecer em 2+ models, invokable + `tap(new StatusFilter($status))` ([reusable query components](https://laravel.com/docs/13.x/queries#reusable-query-components)). |
+
+Debug local: `dumpRawSql()` / `toSql()`. Nunca em produção.
 
 **Filas** ([jobs and database transactions](https://laravel.com/docs/13.x/queues#jobs-and-database-transactions))
 
@@ -473,7 +493,7 @@ stateDiagram-v2
 Formato: `{PREFIX}-{YEAR}-{PAD6}`  
 Prefixos: `ORC`, `OS`, `FAT`.
 
-Transação com `lockForUpdate()` na linha da sequência para evitar buraco/duplicata em concorrência.
+Transação com `lockForUpdate()` na linha da sequência, depois `increment('last_number')` — não ler/somar/gravar à mão. Locks pessimistas **sempre** dentro de `DB::transaction` ([pessimistic locking](https://laravel.com/docs/13.x/queries#pessimistic-locking)).
 
 Revisão de orçamento: **mesmo `number`**, campo `revision` incrementa. Exibição: `ORC-2026-000123` / `ORC-2026-000123-r2`.
 
@@ -732,6 +752,31 @@ Policies Laravel espelham a tabela. Livewire chama `$this->authorize()`; rotas u
 
 - `next(Company $c, string $type): string`
 
+```php
+DB::transaction(function () use ($company, $type, $year) {
+    $seq = DocumentSequence::query()
+        ->whereBelongsTo($company)
+        ->where('document_type', $type)
+        ->where('year', $year)
+        ->lockForUpdate()
+        ->first();
+
+    if ($seq === null) {
+        $seq = DocumentSequence::query()->create([
+            'company_id' => $company->id,
+            'document_type' => $type,
+            'year' => $year,
+            'last_number' => 0,
+        ]);
+        $seq = DocumentSequence::query()->whereKey($seq->id)->lockForUpdate()->firstOrFail();
+    }
+
+    $seq->increment('last_number');
+
+    return sprintf('%s-%d-%06d', $prefix, $year, $seq->last_number);
+});
+```
+
 Idempotência: `convert` e `createFromWorkOrder` usam transação e `lockForUpdate` no documento origem; recusam se `workOrder()` / `invoice()` já existir (unique em `work_orders.quote_id` e `invoices.work_order_id` / `invoices.quote_id`).
 
 ---
@@ -749,8 +794,8 @@ Schedule::job(new MarkOverdueInvoicesJob)->dailyAt('01:10')->timezone('America/S
 
 | Job | Quando | Ação |
 |---|---|---|
-| `ExpireQuotesJob` | diário 01:00 | `enviado` + `valid_until < today` → `expirado` |
-| `MarkOverdueInvoicesJob` | diário 01:10 | parcelas em aberto com `due_date < today` → `vencida`; fatura idem se saldo > 0 |
+| `ExpireQuotesJob` | diário 01:00 | `enviado` + `valid_until < today` → `expirado`. Query: `where(function …)` + `lazyById()`. |
+| `MarkOverdueInvoicesJob` | diário 01:10 | parcelas em aberto com `due_date < today` → `vencida`; fatura idem se saldo > 0. Idem `lazyById()`. |
 | `GenerateDocumentPdfJob` | na fila ao enviar/emitir | gera e grava `pdf_path` |
 
 Jobs de PDF usam atributos do Laravel 13 e roteamento central em `AppServiceProvider`:
@@ -794,7 +839,7 @@ Rotas autenticadas em `routes/web.php` (`auth`, `verified`). Componentes em clas
 | `Livewire\Settings\...` | já vem no kit (perfil, senha, aparência) |
 | `dashboard` (view) | KPIs REL-01..03 |
 
-Layout sidebar Flux (`resources/views/layouts/app.blade.php`). Ações de status chamam services + `DB::transaction`. Testes: `livewire(...)` + `actingAs`. Assert no **banco**.
+Layout sidebar Flux (`resources/views/layouts/app.blade.php`). Listagens: `when()` + `whereLike`/`whereAny` + `paginate(15)`; `orderBy` só com coluna na allowlist. Ações de status chamam services + `DB::transaction`. Testes: `livewire(...)` + `actingAs`. Assert no **banco**.
 
 ---
 
@@ -957,6 +1002,7 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 | Directory structure | https://laravel.com/docs/13.x/structure |
 | Database (PG 10+) | https://laravel.com/docs/13.x/database |
 | Migrations (`foreignIdFor`, `constrained`, `--isolated`) | https://laravel.com/docs/13.x/migrations |
+| Query builder (`when`, `whereLike`, `lazyById`, `lockForUpdate`, `increment`) | https://laravel.com/docs/13.x/queries |
 | Eloquent (models, strictness, Fillable, scopes, observers) | https://laravel.com/docs/13.x/eloquent |
 | Eloquent relationships (`with`, chaperone, morph map, hasOne of many) | https://laravel.com/docs/13.x/eloquent-relationships |
 | Scheduling (`routes/console.php`) | https://laravel.com/docs/13.x/scheduling |
