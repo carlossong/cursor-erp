@@ -20,7 +20,7 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 | UI interna | **Livewire 4 + Blade + Flux UI 2** (componentes em classe) | starter kit oficial ([starter kits](https://laravel.com/docs/13.x/starter-kits#livewire), [frontend](https://laravel.com/docs/13.x/frontend#livewire)) |
 | Auth | **Fortify** + Spatie Permission + **Policies** Laravel | kit: login/reset/2FA; autorização por model em `app/Policies` ([authorization](https://laravel.com/docs/13.x/authorization)); **sem** registro público |
 | PDF | `barryvdh/laravel-dompdf` (MVP) | A4 simples; Browsershot se o layout exigir |
-| Storage | `local` em dev; S3-compatível em prod | `php artisan storage:link` para anexos públicos |
+| Storage | `local` em dev; S3-compatível em prod | logo da empresa: disco `public` + `storage:link`; anexos OS/PDF: disco **privado** + download autenticado ([filesystem](https://laravel.com/docs/13.x/filesystem)) |
 | Front público | nenhum no MVP | link de aprovação = P1 |
 | API HTTP | **não** no MVP | P1: `php artisan install:api` (Sanctum) + JSON:API resources nativos do Laravel 13 |
 | Multitenancy | **não** no MVP. Toda tabela de negócio tem `company_id` (seed = `1`) | evita retrabalho na P2 |
@@ -95,6 +95,11 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - `wire:model.live` em campos de dinheiro/totais. Default deferred; busca: `.live.debounce`. Sem gravar orçamento no `updated()`.
 - Método/propriedade chamada `upload` (reservado). Paginação `->links()` / tema Bootstrap — UI é `<flux:pagination>`.
 - Publicar assets Livewire (`livewire:publish --assets`), `inject_assets => false`, endpoint `/livewire/update` custom, bundle manual Alpine — só se o deploy exigir.
+- `app/Exceptions/Handler.php` (Laravel 13 usa `withExceptions` em `bootstrap/app.php`). Mix (assets = **Vite**). MongoDB. Dusk no MVP.
+- Cast `encrypted` em CNPJ, e-mail, número de documento — impede busca/`where`. `encrypted` só para segredo que não se consulta (ex.: token de gateway P1).
+- `$request->all()` / `$request->input()` mass-assign no model. Validado: `$this->validate()` / `$request->validated()`.
+- `{!! $userInput !!}` sem sanitizar. Estado de domínio na sessão (`session()->put('quote')`). Totais de documento só em `Cache::remember` (a fonte é o banco).
+- Laravel AI SDK, MCP server próprio, Precognition, Broadcasting/Reverb, Scout, Cashier, Passport, Socialite, Folio, Homestead, Envoy, Pennant no MVP. Boost **sim** (já no kit).
 
 ### 1.2 Diagrama de contexto
 
@@ -137,10 +142,16 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 22. **CSRF** `PreventRequestForgery` no grupo `web`. Dois níveis: `Sec-Fetch-Site` (same-origin) e token de sessão. Forms Blade POST/PUT/PATCH/DELETE: `@csrf`. Livewire manda o token sozinho. Sem `except` / `originOnly` / `allowSameSite` no MVP. Testes: CSRF desligado automaticamente ([csrf](https://laravel.com/docs/13.x/csrf)).
 23. **Controllers** não fazem o CRUD do painel. UI = Livewire. Exceção: invokable (`--invokable`) só para resposta binária (PDF/anexo). Sem `Route::resource`. Base vazia `app/Http/Controllers/Controller.php` fica como está ([controllers](https://laravel.com/docs/13.x/controllers)).
 24. **Livewire 4** class components: `make:livewire Quotes/Index --class` (default neste repo). Páginas: `Route::livewire` + `#[Title]` + `public Quote $quote`. Forms: `wire:submit`. Listagens: `WithPagination` + `#[Computed]` + `resetPage()`. Ações: `$this->authorize()`. Anexos: `WithFileUploads`. Links internos: `wire:navigate` ([Livewire 4](https://livewire.laravel.com/docs/4.x)).
+25. **Sessão** `SESSION_DRIVER=database` (tabela do kit). Lifetime 120. `same_site=lax`. Fortify regenera o id no login; logout `invalidate` + `regenerateToken`. Testes: `array`. Sem driver custom ([session](https://laravel.com/docs/13.x/session)).
+26. **Blade + Vite + URLs** — layouts/components do kit; `@can` / `@csrf`; assets `vite.config.js` (não Mix). Links: `route()` / `to_route()`, nunca URL hardcoded ([blade](https://laravel.com/docs/13.x/blade), [vite](https://laravel.com/docs/13.x/vite), [urls](https://laravel.com/docs/13.x/urls)).
+27. **Validação** no Livewire (`$this->validate()` / Form object). Regras Laravel (`required`, `decimal`, `after_or_equal:today`, `Rule::unique`, arquivo `mimes`+`max`). Sem Form Request de CRUD ([validation](https://laravel.com/docs/13.x/validation)).
+28. **Filesystem / erros / log / cache** — PDF e anexos no disco privado; logo no `public` + `storage:link`. Exceções em `withExceptions`. Log `stack`. Cache local `database` / prod `redis`. Sem `Handler.php` ([filesystem](https://laravel.com/docs/13.x/filesystem), [errors](https://laravel.com/docs/13.x/errors), [logging](https://laravel.com/docs/13.x/logging), [cache](https://laravel.com/docs/13.x/cache)).
+29. **Encryption + casts** — `APP_KEY`; rotação com `APP_PREVIOUS_KEYS`. Casts no método `casts()`: `hashed`, `decimal:n`, enum, `immutable_*`, JSON `array`. Sem `encrypted` em campo pesquisável ([encryption](https://laravel.com/docs/13.x/encryption), [eloquent-mutators](https://laravel.com/docs/13.x/eloquent-mutators)).
+30. **Testes HTTP** Pest Feature + `RefreshDatabase` + sqlite `:memory:`. `actingAs`, `livewire()`, `Queue::fake` / `Notification::fake`. Sem Dusk no MVP ([http-tests](https://laravel.com/docs/13.x/http-tests), [database-testing](https://laravel.com/docs/13.x/database-testing)).
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
-Fontes: Eloquent, Queues, Mail, Notifications, Errors, Livewire 4, Fortify, Authorization, Hashing, Routing, Middleware, CSRF, Controllers, starter kit.
+Fontes: índice [laravel.com/docs/13.x](https://laravel.com/docs/13.x) (14/08/2026). Mapa em §1.5.
 
 **Criação (desvio consciente do playbook de agentes)**
 
@@ -255,8 +266,6 @@ Kit: Livewire `^4.1`, Tailwind, [Flux UI 2](https://fluxui.dev/), Blaze. Código
 | Persistência de middleware | `auth` / `can` / `verified` já são persistentes. Fase 1: `Livewire::addPersistentMiddleware([EnsureUserIsActive::class])` no `AppServiceProvider` **além** de aplicar na rota. |
 
 Ações de status chamam `QuoteService` / `InvoiceService`, não `update(['status' => …])` no componente.
-
-**Fortify (auth do kit)** ([authentication](https://laravel.com/docs/13.x/authentication), [starter kits — authentication](https://laravel.com/docs/13.x/starter-kits#authentication), [Fortify](https://laravel.com/docs/13.x/fortify))
 
 **Fortify (auth do kit)** ([authentication](https://laravel.com/docs/13.x/authentication), [starter kits — authentication](https://laravel.com/docs/13.x/starter-kits#authentication), [Fortify](https://laravel.com/docs/13.x/fortify))
 
@@ -439,6 +448,9 @@ Mailables e `Notification` com `ShouldQueue`. Local: `MAIL_MAILER=log`.
 - Senha: cast `hashed` (bcrypt 12); confirmação recente em telas sensíveis (`password.confirm`).
 - Toda ação Livewire de domínio: `$this->authorize()` (403) ou `denyAsNotFound()` (outra empresa).
 - CSRF: `PreventRequestForgery` no grupo `web`; forms Blade com `@csrf`; sem `except` no painel.
+- Sessão: `database` (não `cookie`/`file` em prod). Rotação de `APP_KEY`: listar chaves velhas em `APP_PREVIOUS_KEYS` senão todos saem do login.
+- Anexos OS/PDF: disco privado. `Storage::fake` nos testes de upload.
+- `LOG_LEVEL=error` em prod; não logar senha / token 2FA / conteúdo de sessão.
 
 **CI**
 
@@ -448,6 +460,85 @@ php artisan test
 ```
 
 Pint já vem com `pint.json` do starter kit (preset Laravel).
+
+### 1.5 Mapa da documentação Laravel 13
+
+Índice oficial: [laravel.com/docs/13.x](https://laravel.com/docs/13.x) (`documentation.md` do repo `laravel/docs` branch `13.x`, 14/08/2026). **Alinhado** = regra na spec / código da Fase 0. **P1** = depois do MVP. **Fora** = não entra neste produto.
+
+**Prologue / Getting started / Architecture**
+
+| Página | Uso |
+|---|---|
+| [Releases](https://laravel.com/docs/13.x/releases) / [Upgrade](https://laravel.com/docs/13.x/upgrade) | Alinhado — app novo na 13, sem upgrade 12. |
+| [Contributions](https://laravel.com/docs/13.x/contributions) | Fora (não contribuímos ao framework). |
+| [Installation](https://laravel.com/docs/13.x/installation) | Alinhado — `laravel new … --livewire --livewire-class-components`. |
+| [Configuration](https://laravel.com/docs/13.x/configuration) | Alinhado — `.env` + `config/`; `config:cache` via `optimize`. Sem `env()` fora de `config/`. |
+| [Agentic development](https://laravel.com/docs/13.x/ai) | Boost sim; playbook [for/agents](https://laravel.com/for/agents) **não** no default React. |
+| [Structure](https://laravel.com/docs/13.x/structure) | Alinhado — `bootstrap/app.php`, sem Kernel. |
+| [Frontend](https://laravel.com/docs/13.x/frontend) / [Starter kits](https://laravel.com/docs/13.x/starter-kits) | Alinhado — Livewire + Blade + Flux. |
+| [Deployment](https://laravel.com/docs/13.x/deployment) | Alinhado — `optimize`, `/up`, `migrate --isolated`. |
+| [Lifecycle](https://laravel.com/docs/13.x/lifecycle) / [Container](https://laravel.com/docs/13.x/container) / [Providers](https://laravel.com/docs/13.x/providers) / [Facades](https://laravel.com/docs/13.x/facades) | Alinhado — DI no Service/Livewire; `AppServiceProvider` + `FortifyServiceProvider` em `bootstrap/providers.php`. Sem Service Provider extra “por módulo”. |
+
+**The Basics**
+
+| Página | Uso |
+|---|---|
+| [Routing](https://laravel.com/docs/13.x/routing) / [Middleware](https://laravel.com/docs/13.x/middleware) / [CSRF](https://laravel.com/docs/13.x/csrf) / [Controllers](https://laravel.com/docs/13.x/controllers) | Alinhado (§1.4). |
+| [Requests](https://laravel.com/docs/13.x/requests) / [Responses](https://laravel.com/docs/13.x/responses) | Painel via Livewire. Input = propriedades + `$this->validate()`. Download: `Storage::download` / invokable. Redirect: `to_route` / `$this->redirect(..., navigate: true)`. Sem `$request->all()` no `create()`. |
+| [Views](https://laravel.com/docs/13.x/views) / [Blade](https://laravel.com/docs/13.x/blade) | Alinhado — Blade + Flux + `@can` / `@csrf` / `@error`. Components em `resources/views/components`. Sem `{!! !!}` com input. |
+| [Vite](https://laravel.com/docs/13.x/vite) | Alinhado — `vite.config.js` do kit (Tailwind, passkeys). Sem Mix. |
+| [URLs](https://laravel.com/docs/13.x/urls) | `route()` / `to_route()` / `signed` (verificação Fortify). Sem URL absoluta hardcoded. |
+| [Session](https://laravel.com/docs/13.x/session) | `database`, lifetime 120, `lax`. Flash: Flux toast no Livewire (não `session()->flash` como UX principal). Sem `->block()` no MVP. Testes: `array`. |
+| [Validation](https://laravel.com/docs/13.x/validation) | Livewire `$this->validate()` / Form object. `Password::defaults` já no `AppServiceProvider`. Form Request só em invokable pontual. |
+| [Errors](https://laravel.com/docs/13.x/errors) | `withExceptions` no bootstrap. `shouldRenderJsonWhen` para `api/*` (P1). 403 = policy; 404 = `denyAsNotFound` / binding; 419 = CSRF (Laravel já não reporta). Sem `Handler.php`. |
+| [Logging](https://laravel.com/docs/13.x/logging) | `LOG_CHANNEL=stack`. Local: `debug` + Pail. Prod: `error`. Sem senha no log. |
+
+**Digging deeper**
+
+| Página | Uso |
+|---|---|
+| [Artisan](https://laravel.com/docs/13.x/artisan) | Comandos oficiais. Comando nosso só se o schedule/job não cobrir. |
+| [Broadcasting](https://laravel.com/docs/13.x/broadcasting) / [Reverb](https://laravel.com/docs/13.x/reverb) | Fora do MVP. |
+| [Cache](https://laravel.com/docs/13.x/cache) | Local kit: `database`. Prod: Redis. Não cachear total de documento como fonte da verdade. Locks: `lockForUpdate` no numbering, não cache lock. |
+| [Collections](https://laravel.com/docs/13.x/collections) | Support collections ok; listagem = query. Ver também Eloquent collections. |
+| [Concurrency](https://laravel.com/docs/13.x/concurrency) / [Context](https://laravel.com/docs/13.x/context) / [Contracts](https://laravel.com/docs/13.x/contracts) / [Processes](https://laravel.com/docs/13.x/processes) / [Helpers](https://laravel.com/docs/13.x/helpers) / [Strings](https://laravel.com/docs/13.x/strings) | Helpers/`Str`/`Number` ok. Context/Concurrency fora até haver job paralelo real. |
+| [Events](https://laravel.com/docs/13.x/events) | Auth já dispara (`Login`, `Verified`, …). Evento de domínio só se o listener for claro (PDF já é job). Sem event sourcing. |
+| [Filesystem](https://laravel.com/docs/13.x/filesystem) | Logo: `public` + `storage:link`. OS/PDF: privado + `Storage::download`. Teste: `Storage::fake`. Prod: S3. |
+| [HTTP Client](https://laravel.com/docs/13.x/http-client) | P1 (NFS-e). Sem HTTP no MVP. |
+| [Images](https://laravel.com/docs/13.x/images) | Fora — logo é arquivo, não Intervention obrigatório. |
+| [Localization](https://laravel.com/docs/13.x/localization) | `pt_BR`. UI: `lang/pt_BR.json`. `passwords.php` já. Novas strings com `__('…')` em inglês (chave) + tradução no JSON. |
+| [Mail](https://laravel.com/docs/13.x/mail) / [Notifications](https://laravel.com/docs/13.x/notifications) | P1 transacional; agora Fortify (verify/reset) + `MAIL_MAILER=log`. `ShouldQueue`. |
+| [Packages](https://laravel.com/docs/13.x/packages) | Não somos pacote. |
+| [Queues](https://laravel.com/docs/13.x/queues) / [Scheduling](https://laravel.com/docs/13.x/scheduling) | Alinhado. Local kit: `QUEUE_CONNECTION=database`; prod Redis + Horizon. |
+| [Rate limiting](https://laravel.com/docs/13.x/rate-limiting) | Fortify (login/2FA/passkeys). P1: limiter em rota pública. |
+| [Search](https://laravel.com/docs/13.x/search) / Scout | Fora. Busca = `whereLike` / `whereAny`. |
+
+**Security / Database / Eloquent**
+
+| Página | Uso |
+|---|---|
+| Auth, Authorization, Verification, Hashing, Passwords | Alinhado (§1.4). |
+| [Encryption](https://laravel.com/docs/13.x/encryption) | `APP_KEY`; `APP_PREVIOUS_KEYS` na rotação. Cookies de sessão já criptografados. |
+| [Database](https://laravel.com/docs/13.x/database) / [Queries](https://laravel.com/docs/13.x/queries) / [Pagination](https://laravel.com/docs/13.x/pagination) / [Migrations](https://laravel.com/docs/13.x/migrations) | Alinhado. |
+| [Seeding](https://laravel.com/docs/13.x/seeding) | Fase 8 + testes. `DatabaseSeeder`. Sem seed em produção automática. |
+| [Redis](https://laravel.com/docs/13.x/redis) | Prod (cache/fila). Local pode ficar database até Sail. PhpRedis. |
+| [MongoDB](https://laravel.com/docs/13.x/mongodb) | Fora. |
+| Eloquent / Relationships / Collections | Alinhado. |
+| [Mutators / Casts](https://laravel.com/docs/13.x/eloquent-mutators) | `casts()`: enum, `decimal:n`, `immutable_*`, `hashed`, JSON `array`. Sem accessor que esconda regra de negócio do service. Sem `encrypted` pesquisável. |
+| [API Resources](https://laravel.com/docs/13.x/eloquent-resources) / [Serialization](https://laravel.com/docs/13.x/eloquent-serialization) | P1 com `install:api`. `#[Hidden]` já no User. |
+| [Factories](https://laravel.com/docs/13.x/eloquent-factories) | `HasFactory` + states (`draft()`, `sent()`). |
+
+**AI / Testing / Packages**
+
+| Página | Uso |
+|---|---|
+| [AI SDK](https://laravel.com/docs/13.x/ai-sdk) / [MCP](https://laravel.com/docs/13.x/mcp) | Fora do produto. [Boost](https://laravel.com/docs/13.x/boost) sim. |
+| [Testing](https://laravel.com/docs/13.x/testing) / [HTTP tests](https://laravel.com/docs/13.x/http-tests) / [Database testing](https://laravel.com/docs/13.x/database-testing) / [Mocking](https://laravel.com/docs/13.x/mocking) | Pest Feature. `RefreshDatabase`. Fakes de Mail/Queue/Storage/Notification. |
+| [Console tests](https://laravel.com/docs/13.x/console-tests) | Jobs via `artisan()` quando houver comando; schedule testa o job. |
+| [Dusk](https://laravel.com/docs/13.x/dusk) | Fora do MVP. |
+| Fortify, Horizon, Sail, Pint, Telescope, Pulse | Alinhado (Pulse P1). |
+| Sanctum | P1 (`install:api`). |
+| Cashier, Passport, Socialite, Scout, Octane, Folio, Mix, Homestead, Nova, Valet, Envoy, Pennant, Precognition, Prompts, Head | Fora (Herd/Valet ok na máquina do José; o repo padroniza Sail). |
 
 ---
 
@@ -1101,7 +1192,9 @@ Layout sidebar Flux (`resources/views/layouts/app.blade.php`). `#[Title]` em cad
 
 ## 14. Validação (Form Requests / Livewire)
 
-Validação do painel: Livewire `$this->validate()` **antes** de gravar. Preferir `rules()` ou `#[Validate(..., onUpdate: false)]` — validação a cada tecla só em busca, não em dinheiro. Form object (`Livewire\Form`) em Create/Edit grandes (`app/Livewire/Forms/QuoteForm`). **Não** Form Request de controller. Sem `#[Rule]` (deprecated; usar `#[Validate]`).
+Validação do painel: Livewire `$this->validate()` **antes** de gravar — o retorno é o array validado (equivalente a `$request->validated()`). Preferir `rules()` ou `#[Validate(..., onUpdate: false)]`. Form object (`Livewire\Form`) em Create/Edit grandes. **Não** Form Request de CRUD. Sem `#[Rule]` (deprecated).
+
+Regras Laravel ([available rules](https://laravel.com/docs/13.x/validation#available-validation-rules)): `required`, `email`, `decimal:0,2` / `decimal:0,4`, `numeric|min:0.0001` em qtd, `after_or_equal:today` na validade no envio, `Rule::unique` com `ignore`, arquivos `file|mimes:pdf,jpg,jpeg,png|max:10240`. Senha: `Password::defaults` (já no provider). Mensagens em `pt_BR`.
 
 - CNPJ/CPF: algoritmo de dígitos (`league/iso3166` não cobre; usar regra custom ou `laravellegends/pt-br-validator`).
 - E-mail RFC.
@@ -1114,7 +1207,7 @@ Validação do painel: Livewire `$this->validate()` **antes** de gravar. Preferi
 
 ## 15. Testes (Pest 5) — mínimo para o MVP
 
-A doc do Laravel 13 pede **Feature tests** para fluxos. Testar componentes Livewire e rotas HTTP. Unit só para `Money` / arredondamento puro.
+A doc do Laravel 13 pede **Feature tests** para fluxos ([http-tests](https://laravel.com/docs/13.x/http-tests), [database-testing](https://laravel.com/docs/13.x/database-testing)). Testar componentes Livewire e rotas HTTP. Unit só para `Money` / arredondamento puro. Trait `RefreshDatabase`. sqlite `:memory:` + `DB_FOREIGN_KEYS=true`. Sem Dusk.
 
 Rodar: `php artisan test`. Paralelo depois: `composer require brianium/paratest --dev`. Jobs: `Queue::fake()`; e-mail: `Notification::fake()` / `Mail::fake()`. Ambiente: `phpunit.xml`; opcional `.env.testing`. Telescope desligado em `testing`.
 
@@ -1148,7 +1241,7 @@ Factories (`php artisan make:factory`) para Company, User, Customer, Service, Qu
 
 O installer grava SQLite por default. Este projeto **não** usa SQLite fora de teste opcional — Postgres desde o dia zero.
 
-`.env` relevante ([installation](https://laravel.com/docs/13.x/installation#databases-and-migrations)):
+`.env` relevante ([installation](https://laravel.com/docs/13.x/installation#databases-and-migrations), [encryption](https://laravel.com/docs/13.x/encryption)):
 
 ```
 APP_NAME="Cursor ERP"
@@ -1158,17 +1251,17 @@ APP_FALLBACK_LOCALE=pt_BR
 APP_FAKER_LOCALE=pt_BR
 APP_TIMEZONE=America/Sao_Paulo
 DB_CONNECTION=pgsql
-DB_HOST=127.0.0.1
-DB_PORT=5432
-DB_DATABASE=cursor_erp
-QUEUE_CONNECTION=redis
-CACHE_STORE=redis
+SESSION_DRIVER=database
+QUEUE_CONNECTION=database
+CACHE_STORE=database
 FILESYSTEM_DISK=local
 MAIL_MAILER=log
 TELESCOPE_ENABLED=true
+HASH_DRIVER=bcrypt
+BCRYPT_ROUNDS=12
 ```
 
-Produção: `APP_DEBUG=false`, `TELESCOPE_ENABLED=false`, `MAIL_MAILER` real (SES/Postmark/etc.), `LOG_LEVEL=error`. Não commitar `.env`.
+O kit local usa `database` em sessão/fila/cache (já no `.env.example`). Produção: Redis (`QUEUE_CONNECTION=redis`, `CACHE_STORE=redis`) + Horizon. `APP_DEBUG=false`, `TELESCOPE_ENABLED=false`, `MAIL_MAILER` real, `LOG_LEVEL=error`. Rotação de chave: `APP_PREVIOUS_KEYS`. Não commitar `.env`.
 
 `config/erp.php`: prefixos de documento, validade padrão, teto de desconto (overridável pela company).
 
@@ -1246,6 +1339,8 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 ---
 
 ## 23. Fontes (docs oficiais, 14/08/2026)
+
+Mapa completo (alinhado / P1 / fora): **§1.5**. Índice: [laravel.com/docs/13.x](https://laravel.com/docs/13.x).
 
 | Tema | URL |
 |---|---|
