@@ -52,7 +52,7 @@ class CustomerForm extends Form
     ];
 
     /**
-     * @var list<array{name: string, role: string, email: string, phone: string, is_primary: bool}>
+     * @var array<int, array{name: string, role: string, email: string, phone: string, is_primary: bool}>
      */
     public array $contacts = [];
 
@@ -69,16 +69,19 @@ class CustomerForm extends Form
         $this->is_active = $customer->is_active;
         $this->billing_address = array_merge($this->billing_address, $customer->billing_address ?? []);
         $this->service_address = array_merge($this->service_address, $customer->service_address ?? []);
-        $this->contacts = $customer->contacts
-            ->map(fn ($contact): array => [
+        $contacts = [];
+
+        foreach ($customer->contacts as $contact) {
+            $contacts[] = [
                 'name' => $contact->name,
                 'role' => $contact->role ?? '',
                 'email' => $contact->email ?? '',
                 'phone' => $contact->phone ?? '',
                 'is_primary' => $contact->is_primary,
-            ])
-            ->values()
-            ->all();
+            ];
+        }
+
+        $this->contacts = $contacts;
 
         if ($this->contacts === []) {
             $this->contacts = [self::emptyContact(primary: true)];
@@ -160,7 +163,7 @@ class CustomerForm extends Form
      */
     private function validatedAttributes(): array
     {
-        if (($this->service_address['street'] ?? '') === '') {
+        if ($this->service_address['street'] === '') {
             $this->service_address = $this->billing_address;
         }
 
@@ -176,10 +179,10 @@ class CustomerForm extends Form
         $customer->contacts()->delete();
 
         $rows = collect($this->contacts)
-            ->filter(fn (array $contact): bool => filled($contact['name'] ?? null))
+            ->filter(fn (array $contact): bool => filled($contact['name']))
             ->values();
 
-        $hasPrimary = $rows->contains(fn (array $contact): bool => (bool) ($contact['is_primary'] ?? false));
+        $hasPrimary = $rows->contains(fn (array $contact): bool => $contact['is_primary']);
 
         foreach ($rows as $index => $contact) {
             $customer->contacts()->create([

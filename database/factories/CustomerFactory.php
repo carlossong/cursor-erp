@@ -56,7 +56,7 @@ class CustomerFactory extends Factory
             'street' => fake()->streetName(),
             'number' => fake()->buildingNumber(),
             'complement' => fake()->optional()->word(),
-            'district' => fake()->words(2, true),
+            'district' => fake()->streetName(),
             'city' => fake()->city(),
             'state' => fake()->regexify('[A-Z]{2}'),
             'zip' => fake()->numerify('########'),

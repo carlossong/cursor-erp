@@ -25,16 +25,16 @@ Ver `tasks/todo.md`.
 
 ### Checkpoint: Foundation (Tasks 1–2)
 
-- [ ] `Customer::factory()` + contato; `php artisan test` verde
-- [ ] Soft delete e `active()` cobertos
+- [x] `Customer::factory()` + contato; `php artisan test` verde
+- [x] Soft delete e `active()` cobertos
 
 ### Checkpoint: Authz (Task 3)
 
-- [ ] Matriz §9 clientes; 404 cross-company
+- [x] Matriz §9 clientes; 404 cross-company
 
 ### Checkpoint: UI (Tasks 4–6)
 
-- [ ] Index com busca CLI-05; Create/Edit com contatos; inativo visível no cadastro
+- [x] Index com busca CLI-05; Create/Edit com contatos; inativo visível no cadastro
 
 ## Risks and Mitigations
 
