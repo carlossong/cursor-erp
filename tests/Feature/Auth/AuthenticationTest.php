@@ -78,4 +78,13 @@ class AuthenticationTest extends TestCase
 
         $this->assertGuest();
     }
+
+    public function test_authenticated_users_are_redirected_away_from_the_login_page(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get(route('login'))
+            ->assertRedirect(route('dashboard', absolute: false));
+    }
 }

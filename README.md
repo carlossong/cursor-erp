@@ -21,7 +21,7 @@ npm install && npm run build
 composer run dev
 ```
 
-Painel autenticado: `/dashboard` (`auth` + `verified`) · login: `/login` · healthcheck: `/up`.
+Painel autenticado: `/dashboard` (`auth` + `verified`) · visitante vai para `/login` · healthcheck: `/up`.
 
 Usuários internos são criados pelo admin — o registro público está desligado. 2FA (TOTP) e passkeys ficam disponíveis em Configurações.
 

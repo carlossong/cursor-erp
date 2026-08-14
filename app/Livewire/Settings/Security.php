@@ -112,6 +112,8 @@ class Security extends Component
             'password' => $validated['password'],
         ]);
 
+        Auth::logoutOtherDevices($validated['password']);
+
         $this->reset('current_password', 'password', 'password_confirmation');
 
         Flux::toast(variant: 'success', text: __('Password updated.'));

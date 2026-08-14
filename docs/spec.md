@@ -44,6 +44,9 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - **WorkOS AuthKit.** Login, senha, reset e 2FA são Fortify nativo. Sem SSO/social no MVP.
 - **Telescope em produção.** É ferramenta de debug local.
 - Octane, Passport, Scout, Cashier, Reverb, Folio, Mix, Homestead, Nova — fora do problema.
+- **LoginController / `Auth::attempt` à mão.** A página [Manually Authenticating Users](https://laravel.com/docs/13.x/authentication#authenticating-users) é a alternativa ao kit; este ERP fica no Fortify.
+- HTTP Basic (`auth.basic`), guard customizado, `Auth::viaRequest`, provider `database` (não Eloquent), Socialite.
+- Hash da senha **incoming** antes do Fortify comparar — o framework faz o `Hash::check`.
 - Registro público no painel (`Features::registration()`). Usuários são criados pelo admin.
 - Microserviços, DDD tático pesado, event sourcing, `nwidart/laravel-modules`.
 - Soft delete em **documentos numerados**: status `cancelado`. `SoftDeletes` só em cadastros (`Customer`, `Service`, `ServiceCategory`) para ocultar sem quebrar FKs de orçamento/OS/fatura.
@@ -72,11 +75,11 @@ flowchart TB
 
 ### 1.3 Convenções Laravel 13 que esta spec segue
 
-Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
+Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
 
 1. **Criar o app** com `laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction`.
 2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). App autenticado em `/dashboard`. Telescope só nesse ambiente.
-3. **Bootstrap:** `bootstrap/app.php` + `bootstrap/providers.php`. Auth: Fortify (`config/fortify.php`).
+3. **Bootstrap:** `bootstrap/app.php` + `bootstrap/providers.php`. Auth: Fortify (`config/fortify.php`). Redirects em `withMiddleware`: `redirectGuestsTo(route('login'))`, `redirectUsersTo(route('dashboard'))`; `authenticateSessions()` para invalidar outras sessões ([authentication](https://laravel.com/docs/13.x/authentication#protecting-routes)).
 4. **Schedule** em `routes/console.php` (`Schedule::job(...)->dailyAt('01:00')`), não em `app/Console/Kernel.php` (não existe mais no skeleton).
 5. **Jobs** com atributos PHP 8 do framework: `#[Tries(5)]`, `#[Backoff(60)]`, `#[Timeout(120)]`. Roteamento central: `Queue::route(GenerateDocumentPdfJob::class, connection: 'redis', queue: 'pdfs')`.
 6. **Policies** geradas com `php artisan make:policy`; Livewire chama `$this->authorize()`.
@@ -88,6 +91,7 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 12. **Queries** via Eloquent (mesmo query builder). Bindings PDO; **nunca** coluna/`orderBy` vindo do request. Jobs: `lazyById`. Numeração: `lockForUpdate` + `increment` dentro de `DB::transaction` ([queries](https://laravel.com/docs/13.x/queries)).
 13. **Paginação** `paginate(15)` (`LengthAwarePaginator`) nas listagens Livewire + `<flux:pagination>`. Tailwind default do kit; **não** Bootstrap. `cursorPaginate` fora do MVP ([pagination](https://laravel.com/docs/13.x/pagination)).
 14. **Collections** Eloquent no agregado já carregado (`$quote->items`). Filtro de listagem é SQL, não `Model::all()->reject()`. `toQuery()->update()` **não** muda status de documento ([eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections)).
+15. **Auth** Fortify + guard `web` (session) + Eloquent `User`. Usuário logado via `Auth::user()` / `auth()->user()` / `$request->user()`. Painel: `auth` + `verified`. Sem HTTP Basic, Socialite ou guard extra ([authentication](https://laravel.com/docs/13.x/authentication)).
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
@@ -193,17 +197,34 @@ PDF e e-mail: `ShouldQueue` + `->afterCommit()` depois de gravar o documento. `S
 - Anexos: upload Livewire/Blade + disco Laravel (`storage`).
 - Paginação: `paginate(15)` + `<flux:pagination>`. Traduções em `lang/pt_BR.json` (`Showing`, `results`, `pagination.previous`). As chaves `__('to')` / `__('of')` são do Flux — não usar essas strings soltas em outras telas.
 
-**Fortify (auth do kit)** ([authentication](https://laravel.com/docs/13.x/starter-kits#authentication), [enabling features](https://laravel.com/docs/13.x/starter-kits#enabling-and-disabling-features))
+**Fortify (auth do kit)** ([authentication](https://laravel.com/docs/13.x/authentication), [starter kits — authentication](https://laravel.com/docs/13.x/starter-kits#authentication), [Fortify](https://laravel.com/docs/13.x/fortify))
+
+Stack do painel: cookie + sessão Laravel (`SESSION_DRIVER=database`). Guard único `web` (session) + provider Eloquent `App\Models\User` (`config/auth.php`, `config/fortify.php` `guard` = `web`). Sem guard `admin`, sem HTTP Basic, sem Socialite. API token (Sanctum) só no P1 (`install:api`); o browser continua em sessão.
 
 | Feature | Neste ERP |
 |---|---|
 | `Features::registration()` | **Removido.** `/register` 404. Views de login só usam `Route::has('register')`. |
-| `Features::resetPasswords()` | Ligado (AUTH-02). |
+| `Features::resetPasswords()` | Ligado (AUTH-02). Broker `users`, token 60 min. |
 | `Features::emailVerification()` | Ligado. `User` implementa `MustVerifyEmail`. Rotas do painel: `auth` + `verified`. Admin cria usuário já verificado. |
 | `Features::twoFactorAuthentication()` | Ligado (default do kit: `confirm` + `confirmPassword`). TOTP opcional em Configurações. |
 | `Features::passkeys()` | Ligado (default do kit). |
 
-Ações em `app/Actions/Fortify` (`CreateNewUser`, `ResetUserPassword`). Sem registro público, `CreateNewUser` **não** é o caminho de cadastro — Fase 1 cria usuários pelo admin. Rate limit de login/2FA/passkeys em `FortifyServiceProvider` (5/min login). Home Fortify: `/dashboard`.
+Ações em `app/Actions/Fortify` (`CreateNewUser`, `ResetUserPassword`). Sem registro público, `CreateNewUser` **não** é o caminho de cadastro — Fase 1 cria usuários pelo admin. Home Fortify: `/dashboard`.
+
+| Tema | Como |
+|---|---|
+| Usuário autenticado | `Auth::user()` / `Auth::id()` / `auth()->user()` / `$request->user()`. Livewire: `auth()->user()`. Não `User::find(session(...))`. |
+| Rotas do painel | `middleware(['auth', 'verified'])`. Visitante → `route('login')`; usuário logado em rota `guest` → `route('dashboard')` (`bootstrap/app.php`). |
+| Lembrar-me | Checkbox `remember` no login + coluna `remember_token` (migration do kit). Fortify passa o flag ao `attempt`. |
+| Throttle | Fortify: e-mail transliterado + IP, 5/min (`login`); 2FA 5/min; passkeys 10/min. |
+| Logout | `app/Livewire/Actions/Logout.php`: `Auth::guard('web')->logout()`, `Session::invalidate()`, `Session::regenerateToken()`, redirect `/`. |
+| Outras sessões | `authenticateSessions()` no grupo `web`. Troca de senha em Configurações chama `Auth::logoutOtherDevices($newPassword)` ([invalidating sessions](https://laravel.com/docs/13.x/authentication#invalidating-sessions-on-other-devices)). |
+| Confirmar senha | Middleware `password.confirm` em `settings/security`. Timeout `AUTH_PASSWORD_TIMEOUT` (3 h, `config/auth.php`). |
+| Rehash | Cast `password => hashed` no `User`. Rehash automático no login (`rehash_on_login`); **não** desligar. |
+| Usuário inativo | Fase 1: coluna `users.is_active`. Aí `Fortify::authenticateUsing` (ou credencial extra `is_active => true` no `attempt`) recusa inativo. **Não** agora — a coluna ainda não existe. |
+| Eventos | `Login`, `Failed`, `Logout`, `Lockout`, `Verified`, `PasswordReset` — gancho para log de acesso. AUTH-05 continua sendo auditoria de **documento** (`spatie/laravel-activitylog`). |
+
+Não escrever `LoginController` nem `Auth::attempt` no app. Não hashear a senha do request antes do Fortify.
 
 **Mail / notificação (P1)**
 
@@ -215,7 +236,8 @@ Mailables e `Notification` com `ShouldQueue`. Local: `MAIL_MAILER=log`.
 - Deploy: `php artisan optimize` + `php artisan reload` (workers/Horizon).
 - Health: `/up`.
 - Não servir a app fora de `public/`.
-- Rate limit no login (Fortify).
+- Rate limit no login (Fortify, e-mail + IP).
+- Senha: cast `hashed`; confirmação recente em telas sensíveis (`password.confirm`).
 
 **CI**
 
@@ -601,6 +623,8 @@ Schema::create('quotes', function (Blueprint $table) {
 ### 8.2 `users`
 
 Padrão Laravel (migration do kit **intocada**) + migration nova: `company_id` (`foreignIdFor` + `restrictOnDelete`), `phone` nullable, `is_active` boolean default true, índice `(company_id, email)` se ainda não coberto pelo unique de e-mail. Papéis no Spatie.
+
+Login na Fase 1 exige `is_active = true` (`Fortify::authenticateUsing` ou condição extra no `attempt`, [additional conditions](https://laravel.com/docs/13.x/authentication#specifying-additional-conditions)). Inativo recebe o mesmo erro genérico de credencial inválida — não revelar que a conta existe.
 
 ### 8.3 `customers`
 
@@ -1017,6 +1041,7 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 | Starter kits (Livewire, layouts, Fortify, 2FA, FAQ) | https://laravel.com/docs/13.x/starter-kits |
 | Starter kit Livewire (customização) | https://laravel.com/docs/13.x/starter-kits#livewire-customization |
 | Frontend Livewire + Blade | https://laravel.com/docs/13.x/frontend |
+| Authentication (guards, rotas, sessão, confirmar senha) | https://laravel.com/docs/13.x/authentication |
 | Fortify (auth do kit) | https://laravel.com/docs/13.x/fortify |
 | Installation (`laravel new`, `composer run dev`) | https://laravel.com/docs/13.x/installation |
 | Playbook de agentes (default React — **não** usamos) | https://laravel.com/for/agents |
