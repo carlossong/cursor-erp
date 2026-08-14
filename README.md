@@ -25,6 +25,8 @@ Painel autenticado: `/dashboard` (`auth` + `verified`) · login: `/login` · hea
 
 Usuários internos são criados pelo admin — o registro público está desligado. 2FA (TOTP) e passkeys ficam disponíveis em Configurações.
 
+Produção: `php artisan migrate --force --isolated`.
+
 ## Stack
 
 - PHP 8.3–8.5 / Laravel 13

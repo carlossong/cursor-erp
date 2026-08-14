@@ -49,6 +49,8 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - Soft delete em **documentos numerados**: status `cancelado`. `SoftDeletes` só em cadastros (`Customer`, `Service`, `ServiceCategory`) para ocultar sem quebrar FKs de orçamento/OS/fatura.
 - Money como `float`. **`decimal(14,2)`** / `decimal(14,4)` + cast Eloquent `decimal:2` / `decimal:4`. Totais no backend, `ROUND_HALF_UP`.
 - PK UUID/ULID, PK composta, `#[Unguarded]` / `$guarded = []`. Eloquent exige um `id` único; unique composto é índice extra, não PK.
+- `$table->enum()` nativo para status. Coluna `string` + cast PHP enum — alterar casos não exige `using()` no PostgreSQL nem quebra o sqlite dos testes.
+- Editar migration já rodada/commitada. `schema:dump --prune` só depois do MVP, se o diretório inflar.
 - `routes/api.php` até o P1 (`install:api`). CSRF do painel permanece; Laravel 13 formalizou `PreventRequestForgery`.
 
 ### 1.2 Diagrama de contexto
@@ -66,7 +68,7 @@ flowchart TB
 
 ### 1.3 Convenções Laravel 13 que esta spec segue
 
-Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [eloquent](https://laravel.com/docs/13.x/eloquent), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
+Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [eloquent](https://laravel.com/docs/13.x/eloquent), [migrations](https://laravel.com/docs/13.x/migrations), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
 
 1. **Criar o app** com `laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction`.
 2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). App autenticado em `/dashboard`. Telescope só nesse ambiente.
@@ -78,6 +80,7 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 8. **Enums** backed string + cast Eloquent (`QuoteStatus::class`). Datas de negócio: `immutable_date` / `immutable_datetime`.
 9. **Testes:** a maioria em `tests/Feature`. Rodar `php artisan test`. Paralelo depois, com `brianium/paratest`.
 10. **Boost** na criação (`laravel new … --boost`) para o Cursor consultar a doc na versão instalada.
+11. **Migrations** anônimas (`return new class extends Migration`), geradas por Artisan. Deploy: `php artisan migrate --force --isolated`. Testes sqlite com `foreign_key_constraints` ligado ([migrations](https://laravel.com/docs/13.x/migrations)).
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
@@ -124,6 +127,17 @@ Convenções deste ERP:
 | Factory | `HasFactory` em todo model de domínio. Inspecionar com `php artisan model:show`. |
 
 Transações de agregado: `DB::transaction()`. `lockForUpdate()` na linha de `document_sequences` (que tem `id` PK + unique composto).
+
+**Migrations** ([migrations](https://laravel.com/docs/13.x/migrations))
+
+- Gerar com `php artisan make:migration` / `make:model -m`. Classe anônima, `up()` / `down()` reversível (`dropIfExists`). Sem DML — dados vão no seeder.
+- **Não** editar as migrations do kit (`users`, `cache`, `jobs`, 2FA, passkeys). `company_id` / `phone` / `is_active` em `users` entram numa migration `Schema::table` nova.
+- FK: `foreignIdFor(Quote::class)` (2º arg se o nome ≠ `{model}_id`). Modifiers (`nullable()`, `default()`) **antes** de `constrained()`. Depois: `restrictOnDelete()` entre documentos/cadastros; `cascadeOnDelete()` em itens/contatos/parcelas/apontamentos; `nullOnDelete()` em FK opcional (`contact_id`, `parent_id`, `category_id`).
+- Dinheiro: `decimal('total', total: 14, places: 2)`. Qtd: `places: 4`. Endereço: `jsonb()`. Datas de negócio: `date()` / `timestamp()` + `timestamps()`. Cadastros: `softDeletes()`. Anexos: `morphs('documentable')`.
+- Status: `string` + `->default(QuoteStatus::Draft->value)->index()`, **não** `$table->enum()`.
+- Índices na create: unique composto, `(company_id, status)`, colunas de job (`valid_until`, `due_date`). Nome explícito se o auto-nome estourar 63 chars no PG.
+- XOR da origem da fatura: unique nullable em `quote_id` e `work_order_id` + regra no `InvoiceService`. Sem `CHECK` cru (sqlite de teste).
+- SQLite dos testes: `DB_FOREIGN_KEYS=true` (`config/database.php` `foreign_key_constraints`). Produção: `migrate --force --isolated` ([isolating](https://laravel.com/docs/13.x/migrations#isolating-migration-execution)). Sem `schema:dump` no MVP.
 
 **Filas** ([jobs and database transactions](https://laravel.com/docs/13.x/queues#jobs-and-database-transactions))
 
@@ -497,7 +511,32 @@ Regras:
 
 ## 8. Esquema de dados
 
-Convenções Eloquent ([model conventions](https://laravel.com/docs/13.x/eloquent#eloquent-model-conventions)): `id` bigint PK incrementing, `timestamps`, `company_id` FK onde couber. **Sem PK composta** — unique composto é índice, não a chave do model. Índices listados abaixo.
+Convenções Eloquent + Blueprint ([migrations](https://laravel.com/docs/13.x/migrations)): `id()`, `timestamps()`, `company_id` via `foreignIdFor`. **Sem PK composta**. Índices na própria `Schema::create`. Defaults da coluna espelhados em `$attributes` do model.
+
+Ordem: `companies` → `Schema::table('users')` → cadastros → documentos. `down()` dropa filhos primeiro.
+
+Exemplo (orçamento; demais tabelas no mesmo estilo):
+
+```php
+Schema::create('quotes', function (Blueprint $table) {
+    $table->id();
+    $table->foreignIdFor(Company::class)->constrained()->restrictOnDelete();
+    $table->foreignIdFor(Customer::class)->constrained()->restrictOnDelete();
+    $table->foreignIdFor(CustomerContact::class, 'contact_id')->nullable()->constrained()->nullOnDelete();
+    $table->foreignIdFor(User::class, 'salesperson_id')->constrained()->restrictOnDelete();
+    $table->string('number');
+    $table->unsignedInteger('revision')->default(1);
+    $table->foreignIdFor(Quote::class, 'parent_id')->nullable()->constrained()->nullOnDelete();
+    $table->string('status')->default(QuoteStatus::Draft->value);
+    $table->date('valid_until');
+    $table->decimal('total', total: 14, places: 2);
+    $table->timestamps();
+
+    $table->unique(['company_id', 'number', 'revision']);
+    $table->index(['company_id', 'status']);
+    $table->index('valid_until');
+});
+```
 
 ### 8.1 `companies`
 
@@ -510,7 +549,7 @@ Convenções Eloquent ([model conventions](https://laravel.com/docs/13.x/eloquen
 | state_registration | string nullable | IE |
 | municipal_registration | string nullable | IM |
 | email, phone | string nullable | |
-| address_json | jsonb | street, number, complement, district, city, state, zip |
+| address_json | jsonb | `$table->jsonb()`: street, number, complement, district, city, state, zip |
 | logo_path | string nullable | |
 | default_quote_validity_days | int | default 15 |
 | max_discount_percent_sales | decimal(5,2) | default 10 |
@@ -520,29 +559,30 @@ Convenções Eloquent ([model conventions](https://laravel.com/docs/13.x/eloquen
 
 ### 8.2 `users`
 
-Padrão Laravel + `company_id`, `name`, `email`, `is_active`, `phone`. Papéis no Spatie.
+Padrão Laravel (migration do kit **intocada**) + migration nova: `company_id` (`foreignIdFor` + `restrictOnDelete`), `phone` nullable, `is_active` boolean default true, índice `(company_id, email)` se ainda não coberto pelo unique de e-mail. Papéis no Spatie.
 
 ### 8.3 `customers`
 
 | Coluna | Tipo |
 |---|---|
 | company_id | FK |
-| person_type | enum pf/pj |
+| person_type | string | PHP `PersonType`; não `$table->enum()` |
 | name | string |
 | tax_id | string nullable | CPF/CNPJ dígitos |
 | email, phone | nullable |
 | notes | text nullable |
 | is_active | bool default true |
-| billing_address_json | jsonb |
-| service_address_json | jsonb |
+| billing_address_json | jsonb | `$table->jsonb()` |
+| service_address_json | jsonb | |
+| deleted_at | timestamp nullable | `softDeletes()` |
 
 Índice: `(company_id, tax_id)`, `(company_id, name)`.
 
-`customer_contacts`: `customer_id`, `name`, `role`, `email`, `phone`, `is_primary`.
+`customer_contacts`: `foreignIdFor(Customer::class)->constrained()->cascadeOnDelete()`, `name`, `role`, `email`, `phone`, `is_primary`.
 
 ### 8.4 `service_categories` / `services`
 
-`services`: `company_id`, `category_id` nullable, `code` unique por company, `name`, `description`, `unit`, `default_price`, `default_cost`, `billing_mode`, `is_active`.
+`services`: `company_id`, `category_id` nullable (`nullOnDelete`), `code` unique por company, `name`, `description`, `unit` string, `default_price` / `default_cost` `decimal(14,2)`, `billing_mode` string, `is_active`, `softDeletes()`. `service_categories`: idem `softDeletes()`.
 
 ### 8.5 `quotes`
 
@@ -592,7 +632,7 @@ Fatura da OS: `Invoice::workOrder()` / `WorkOrder::invoice()` via `invoices.work
 
 `time_entries`: `work_order_id`, `user_id`, `worked_on` date, `hours` decimal(6,2) nullable, `qty` decimal(14,4) nullable, `description`.
 
-`attachments`: polimórfico `documentable_type/id`, `path`, `original_name`, `mime`, `size`, `uploaded_by`.
+`attachments`: `$table->morphs('documentable')` + `path`, `original_name`, `mime`, `size`, `uploaded_by` (`foreignIdFor(User::class)`).
 
 ### 8.7 `invoices`
 
@@ -898,7 +938,7 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 
 **Local:** Telescope. **Staging/prod:** Horizon + log stack. **P1:** Pulse. Nightwatch só se o time quiser SaaS.
 
-**Deploy:** `php artisan migrate --force`, `php artisan optimize`, `php artisan reload`. Healthcheck `/up`. Document root = `public/`.
+**Deploy:** `php artisan migrate --force --isolated`, `php artisan optimize`, `php artisan reload`. Healthcheck `/up`. Document root = `public/`.
 
 ---
 
@@ -916,6 +956,7 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 | Playbook de agentes (default React — **não** usamos) | https://laravel.com/for/agents |
 | Directory structure | https://laravel.com/docs/13.x/structure |
 | Database (PG 10+) | https://laravel.com/docs/13.x/database |
+| Migrations (`foreignIdFor`, `constrained`, `--isolated`) | https://laravel.com/docs/13.x/migrations |
 | Eloquent (models, strictness, Fillable, scopes, observers) | https://laravel.com/docs/13.x/eloquent |
 | Eloquent relationships (`with`, chaperone, morph map, hasOne of many) | https://laravel.com/docs/13.x/eloquent-relationships |
 | Scheduling (`routes/console.php`) | https://laravel.com/docs/13.x/scheduling |
