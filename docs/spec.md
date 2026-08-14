@@ -46,7 +46,8 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - Octane, Passport, Scout, Cashier, Reverb, Folio, Mix, Homestead, Nova — fora do problema.
 - **LoginController / `Auth::attempt` à mão.** A página [Manually Authenticating Users](https://laravel.com/docs/13.x/authentication#authenticating-users) é a alternativa ao kit; este ERP fica no Fortify.
 - HTTP Basic (`auth.basic`), guard customizado, `Auth::viaRequest`, provider `database` (não Eloquent), Socialite.
-- Hash da senha **incoming** antes do Fortify comparar — o framework faz o `Hash::check`.
+- Hash da senha **incoming** antes do Fortify/`hashed` cast. Gravar senha: texto puro no model; o cast faz `Hash::make`. Factory/teste: `Hash::make` (o cast detecta hash via `Hash::isHashed`).
+- `HASH_VERIFY=false`, driver `argon`/`argon2id`, `config:publish hashing`, `rehash_on_login` desligado. Bcrypt 12 rounds; testes `BCRYPT_ROUNDS=4`.
 - Registro público no painel (`Features::registration()`). Usuários são criados pelo admin.
 - Microserviços, DDD tático pesado, event sourcing, `nwidart/laravel-modules`.
 - Soft delete em **documentos numerados**: status `cancelado`. `SoftDeletes` só em cadastros (`Customer`, `Service`, `ServiceCategory`) para ocultar sem quebrar FKs de orçamento/OS/fatura.
@@ -83,7 +84,7 @@ flowchart TB
 
 ### 1.3 Convenções Laravel 13 que esta spec segue
 
-Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [verification](https://laravel.com/docs/13.x/verification), [authorization](https://laravel.com/docs/13.x/authorization), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
+Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [verification](https://laravel.com/docs/13.x/verification), [hashing](https://laravel.com/docs/13.x/hashing), [authorization](https://laravel.com/docs/13.x/authorization), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
 
 1. **Criar o app** com `laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction`.
 2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). App autenticado em `/dashboard`. Telescope só nesse ambiente.
@@ -102,10 +103,11 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 15. **Auth** Fortify + guard `web` (session) + Eloquent `User`. Usuário logado via `Auth::user()` / `auth()->user()` / `$request->user()`. Painel: `auth` + `verified`. Sem HTTP Basic, Socialite ou guard extra ([authentication](https://laravel.com/docs/13.x/authentication)).
 16. **Autorização** por **policy** no model (`viewAny`, `view`, `create`, `update`, `delete` + verbos de domínio: `send`, `issue`, `registerPayment`). Spatie guarda papel/permission; a policy decide. Outra empresa: `Response::denyAsNotFound()`. Sem `Gate::before` de admin ([authorization](https://laravel.com/docs/13.x/authorization)).
 17. **Verificação de e-mail** `MustVerifyEmail` + coluna `email_verified_at` + middleware `verified` no painel. Rotas Fortify (`verification.*`). Admin cria usuário já verificado; troca de e-mail zera a verificação e reenvia o link ([verification](https://laravel.com/docs/13.x/verification)).
+18. **Hashing** bcrypt (`HASH_DRIVER=bcrypt`, `BCRYPT_ROUNDS=12`). Senha no `User` com cast `hashed` — sem `Hash::make` no assign. Rehash no login. `HASH_VERIFY` ligado. Testes: `BCRYPT_ROUNDS=4` ([hashing](https://laravel.com/docs/13.x/hashing)).
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
-Fontes: Eloquent, Queues, Mail, Notifications, Errors, Livewire, Fortify, Authorization, starter kit.
+Fontes: Eloquent, Queues, Mail, Notifications, Errors, Livewire, Fortify, Authorization, Hashing, starter kit.
 
 **Criação (desvio consciente do playbook de agentes)**
 
@@ -230,11 +232,24 @@ Ações em `app/Actions/Fortify` (`CreateNewUser`, `ResetUserPassword`). Sem reg
 | Logout | `app/Livewire/Actions/Logout.php`: `Auth::guard('web')->logout()`, `Session::invalidate()`, `Session::regenerateToken()`, redirect `/`. |
 | Outras sessões | `authenticateSessions()` no grupo `web`. Troca de senha em Configurações chama `Auth::logoutOtherDevices($newPassword)` ([invalidating sessions](https://laravel.com/docs/13.x/authentication#invalidating-sessions-on-other-devices)). |
 | Confirmar senha | Middleware `password.confirm` em `settings/security`. Timeout `AUTH_PASSWORD_TIMEOUT` (3 h, `config/auth.php`). |
-| Rehash | Cast `password => hashed` no `User`. Rehash automático no login (`rehash_on_login`); **não** desligar. |
+| Rehash | Cast `password => hashed` no `User`. Rehash automático no login (`rehash_on_login`); **não** desligar. Sem `Hash::make` no `update`/`create` da senha. |
 | Usuário inativo | Fase 1: coluna `users.is_active`. Aí `Fortify::authenticateUsing` (ou credencial extra `is_active => true` no `attempt`) recusa inativo. **Não** agora — a coluna ainda não existe. |
 | Eventos | `Login`, `Failed`, `Logout`, `Lockout`, `Verified`, `PasswordReset` — gancho para log de acesso. AUTH-05 continua sendo auditoria de **documento** (`spatie/laravel-activitylog`). |
 
 Não escrever `LoginController` nem `Auth::attempt` no app. Não hashear a senha do request antes do Fortify.
+
+**Hashing** ([hashing](https://laravel.com/docs/13.x/hashing))
+
+Driver **bcrypt** (default do kit e do Laravel). `HASH_DRIVER=bcrypt`, `BCRYPT_ROUNDS=12` no `.env.example`. **Não** publicar `config/hashing.php` no MVP. Argon/argon2id fora. `HASH_VERIFY` fica `true` — não migrar algoritmo.
+
+| Tema | Como |
+|---|---|
+| Gravar senha | Texto puro no `User` (`CreateNewUser`, `ResetUserPassword`, `Security::updatePassword`, admin Fase 1). Cast `hashed` chama `Hash::make` se ainda não for hash (`Hash::isHashed`). |
+| Factory / teste | `Hash::make('password')` (padrão do kit). `Hash::check` só para assert. |
+| Conferir | Fortify / regra `current_password`. Não `Hash::check` no Livewire de login. |
+| Rehash | `rehash_on_login` (default `true`). Se subir `BCRYPT_ROUNDS`, o próximo login atualiza o hash. Não chamar `Hash::needsRehash` à mão. |
+| Testes | `phpunit.xml`: `BCRYPT_ROUNDS=4` (skeleton). Produção/dev: 12. |
+| Complexidade | `Password::defaults` no `AppServiceProvider` (prod: 12 chars, mixed, uncompromised). É validação, não o algoritmo. |
 
 **Verificação de e-mail** ([verification](https://laravel.com/docs/13.x/verification))
 
@@ -288,7 +303,7 @@ Mailables e `Notification` com `ShouldQueue`. Local: `MAIL_MAILER=log`.
 - Health: `/up`.
 - Não servir a app fora de `public/`.
 - Rate limit no login (Fortify, e-mail + IP).
-- Senha: cast `hashed`; confirmação recente em telas sensíveis (`password.confirm`).
+- Senha: cast `hashed` (bcrypt 12); confirmação recente em telas sensíveis (`password.confirm`).
 - Toda ação Livewire de domínio: `$this->authorize()` (403) ou `denyAsNotFound()` (outra empresa).
 
 **CI**
@@ -1097,6 +1112,7 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 | Frontend Livewire + Blade | https://laravel.com/docs/13.x/frontend |
 | Authentication (guards, rotas, sessão, confirmar senha) | https://laravel.com/docs/13.x/authentication |
 | Email verification (`MustVerifyEmail`, `verified`) | https://laravel.com/docs/13.x/verification |
+| Hashing (bcrypt, `hashed` cast, rehash, `HASH_VERIFY`) | https://laravel.com/docs/13.x/hashing |
 | Fortify (auth do kit) | https://laravel.com/docs/13.x/fortify |
 | Installation (`laravel new`, `composer run dev`) | https://laravel.com/docs/13.x/installation |
 | Playbook de agentes (default React — **não** usamos) | https://laravel.com/for/agents |

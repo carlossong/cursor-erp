@@ -208,7 +208,7 @@ Prioridade: **P0** = MVP · **P1** = logo após o MVP · **P2** = evolução.
 | NFR-01 | Usuários simultâneos | Até 30 usuários internos no MVP sem degradação perceptível. |
 | NFR-02 | Performance de listagens | Páginas de listagem (orçamentos, OS, faturas) < 500 ms no p95 em dataset de 50k registros (com índices). |
 | NFR-03 | Disponibilidade | Web app único; jobs em fila; falha de job não corrompe status (reatentativa idempotente). |
-| NFR-04 | Segurança | HTTPS, CSRF, senhas com hash (`hashed` cast + rehash no login), Fortify + **policy por ação** (`$this->authorize`), outra empresa = 404, sessão cookie (`web`), throttle de login, `password.confirm` em ações sensíveis, e-mail verificado no painel, 2FA/passkeys opcionais, `APP_DEBUG=false` em prod, sem registro público, logs de auditoria nos documentos. |
+| NFR-04 | Segurança | HTTPS, CSRF, senhas bcrypt (`hashed` cast, `BCRYPT_ROUNDS=12`, rehash no login), Fortify + **policy por ação** (`$this->authorize`), outra empresa = 404, sessão cookie (`web`), throttle de login, `password.confirm` em ações sensíveis, e-mail verificado no painel, 2FA/passkeys opcionais, `APP_DEBUG=false` em prod, sem registro público, logs de auditoria nos documentos. |
 | NFR-05 | LGPD | Base legal de cadastro de clientes; exclusão/anonimização sob demanda (admin); sem dado sensível de saúde no MVP. |
 | NFR-06 | Backup | Dump diário do banco (infra); uploads em disco/S3 com retenção. |
 | NFR-07 | Observabilidade | Telescope só local; Horizon + log em staging/prod; healthcheck `/up`; Pulse no P1. |
