@@ -1,189 +1,150 @@
-# Fase 1 — todo
+# Fase 2 — todo
 
-Fonte: `docs/spec.md` §8.1–8.2, §9, §18. Verificação: `php artisan test`. DoD: `.cursor/references/definition-of-done.md` (Pest + Pint + sem lazy load).
+Fonte: `docs/spec.md` §8.3, §9, §13; `docs/prd.md` CLI-01..05. Verificação: `php artisan test`. DoD: Pest + Pint + Larastan + sem lazy load.
 
-## Task 1: Company (schema + model + factory)
+## Task 1: PersonType + Customer (schema + model + factory)
 
-**Description:** Tabela `companies` e model Eloquent com endereço JSON e defaults comerciais.
+**Description:** Enum PF/PJ, tabela `customers` com endereços JSON, soft delete e defaults.
 
 **Acceptance criteria:**
-- [x] Migration anônima `create_companies_table` com colunas da spec §8.1 (`jsonb` em `address`)
-- [x] `Company` com `HasFactory`, `#[Fillable]`, `casts()` (`address` → `array`, decimais, ints), `$attributes` dos defaults, `users(): HasMany`
-- [x] Factory preenche CNPJ 14 dígitos e `address` com street/city/state/zip
+- [ ] `App\Enums\PersonType` (`pf` / `pj`)
+- [ ] Migration `create_customers_table`: `foreignIdFor(Company::class)->constrained()->restrictOnDelete()`, `person_type` string, `name`, `tax_id` nullable, email/phone/notes nullable, `is_active` default true, `jsonb` billing/service address, `softDeletes()`, índices `(company_id, tax_id)` e `(company_id, name)`
+- [ ] Model `HasFactory`, `SoftDeletes`, `#[Fillable]`, casts (enum, bool, array), `$attributes`, `company()`, `contacts()` + `chaperone()`, `primaryContact()`, `active()`
+- [ ] `Company::customers()`
+- [ ] Factory PF/PJ + state `inactive()`
 
 **Verification:**
-- [x] `php artisan test --compact tests/Feature/CompanyTest.php`
-- [x] `php artisan test` (suite)
+- [ ] `php artisan test --compact tests/Feature/Customers/CustomerTest.php`
+- [ ] `php artisan test`
 
 **Dependencies:** None
 
 **Files likely touched:**
-- `database/migrations/*_create_companies_table.php`
-- `app/Models/Company.php`
-- `database/factories/CompanyFactory.php`
-- `tests/Feature/CompanyTest.php`
+- `app/Enums/PersonType.php`
+- `database/migrations/*_create_customers_table.php`
+- `app/Models/Customer.php`
+- `database/factories/CustomerFactory.php`
+- `tests/Feature/Customers/CustomerTest.php`
 
-**Estimated scope:** S
+**Estimated scope:** M
 
-## Task 2: users.company_id, phone, is_active
+## Task 2: CustomerContact
 
-**Description:** Estender `users` sem editar a migration do kit; factory e relação `belongsTo` Company.
+**Description:** Contatos do cliente (CLI-02).
 
 **Acceptance criteria:**
-- [x] `Schema::table('users')`: `foreignIdFor(Company::class)->constrained()->restrictOnDelete()`, `phone` nullable, `is_active` boolean default true
-- [x] `User` fillable/casts/`$attributes`/`company()`; factory cria Company
-- [x] Testes de login da Fase 0 continuam passando
+- [ ] Migration `customer_contacts`: `foreignIdFor(Customer::class)->constrained()->cascadeOnDelete()`, `name`, `role`, `email`, `phone`, `is_primary` default false, timestamps
+- [ ] Model + factory; `customer()` BelongsTo
+- [ ] `primaryContact` devolve o contato com `is_primary`
 
 **Verification:**
-- [x] `php artisan test --compact`
+- [ ] Pest no mesmo `CustomerTest.php`
 
 **Dependencies:** Task 1
 
 **Files likely touched:**
-- `database/migrations/*_add_company_fields_to_users_table.php`
-- `app/Models/User.php`
-- `database/factories/UserFactory.php`
-- `tests/Feature/CompanyTest.php`
+- `database/migrations/*_create_customer_contacts_table.php`
+- `app/Models/CustomerContact.php`
+- `database/factories/CustomerContactFactory.php`
 
 **Estimated scope:** S
 
 ## Checkpoint: Foundation
-- [x] All tests pass
-- [x] Factories não disparam lazy load
+- [ ] All tests pass
+- [ ] Sem lazy load nas relações usadas nos testes (`load` / `with`)
 
-## Task 3: Fortify recusa usuário inativo
+## Task 3: CustomerPolicy + permissions
 
-**Description:** Login com senha correta e `is_active = false` falha como credencial inválida (AUTH-01).
+**Description:** Matriz §9 para clientes.
 
 **Acceptance criteria:**
-- [x] `UserFactory::inactive()`
-- [x] Fortify `authenticateUsing` (ou condição extra no attempt) exige `is_active`
-- [x] Resposta igual a senha errada (não revelar que a conta existe)
+- [ ] Permissions `customers.view|create|update|delete`
+- [ ] Admin e comercial: CRUD; operação, financeiro, gestor: view
+- [ ] Outra empresa: `denyAsNotFound()`
+- [ ] Sem `Policy::before`
 
 **Verification:**
-- [x] `php artisan test --compact --filter=inactive`
+- [ ] `php artisan test --compact tests/Feature/Authorization/CustomerPolicyTest.php`
 
-**Dependencies:** Task 2
+**Dependencies:** Task 1
 
 **Files likely touched:**
-- `app/Providers/FortifyServiceProvider.php`
-- `database/factories/UserFactory.php`
-- `tests/Feature/Auth/AuthenticationTest.php`
+- `database/seeders/RolePermissionSeeder.php`
+- `app/Policies/CustomerPolicy.php`
+- `tests/Feature/Authorization/CustomerPolicyTest.php`
 
 **Estimated scope:** S
 
-## Task 4: EnsureUserIsActive
+## Task 4: BrazilianTaxId + Index (CLI-05, CLI-03)
 
-**Description:** Sessão já aberta de usuário desativado: logout + invalidar + redirect login. Persistente no Livewire.
+**Description:** Busca por nome/documento/e-mail/telefone; listagem com badge ativo/inativo.
 
 **Acceptance criteria:**
-- [x] Middleware no grupo `auth`+`verified` via `web(append:)` / alias, **sem** substituir o stack
-- [x] `Livewire::addPersistentMiddleware([EnsureUserIsActive::class])`
-- [x] Guest não é afetado
+- [ ] Regra `BrazilianTaxId` (checksum CPF 11 / CNPJ 14; vazio ok)
+- [ ] `Route::livewire` Index, `#[Title]`, `WithPagination`, `#[Computed]`, `whereAny` + `resetPage()` no filtro
+- [ ] Sidebar Clientes com `@can('viewAny', Customer::class)`
 
 **Verification:**
-- [x] Feature test: `actingAs` inativo no dashboard → guest + redirect login
+- [ ] Pest: busca encontra por tax_id; inativo aparece no cadastro com badge; operação 200; sem permissão 403
 
 **Dependencies:** Task 3
 
 **Files likely touched:**
-- `app/Http/Middleware/EnsureUserIsActive.php`
-- `bootstrap/app.php`
-- `app/Providers/AppServiceProvider.php`
-- `tests/Feature/Auth/AuthenticationTest.php`
+- `app/Rules/BrazilianTaxId.php`
+- `app/Livewire/Customers/Index.php`
+- `resources/views/livewire/customers/index.blade.php`
+- `routes/web.php`
+- `resources/views/layouts/app/sidebar.blade.php`
+- `tests/Feature/Customers/CustomerIndexTest.php`
 
 **Estimated scope:** M
 
-## Task 5: Spatie Permission + papéis
+## Task 5: Create customer (CLI-01)
 
-**Description:** Instalar `spatie/laravel-permission` sem teams; seed dos 5 papéis e permissions `{recurso}.{verbo}`.
+**Description:** Admin/comercial cria cliente da mesma company, com endereços JSON.
 
 **Acceptance criteria:**
-- [x] Pacote + migrations publicadas
-- [x] `User` usa `HasRoles`
-- [x] Seeder/teste cria `admin`, `comercial`, `operacao`, `financeiro`, `gestor`
+- [ ] `/customers/create`; `company_id` do ator; `$this->authorize('create')`
+- [ ] Flux form, `wire:submit`, tax_id opcional com `BrazilianTaxId`
+- [ ] Operação/gestor 403 no create
 
 **Verification:**
-- [x] Pest: user `assignRole('comercial')` tem o papel; sem teams config
+- [ ] Pest Livewire create + assert no banco
 
-**Dependencies:** Task 2
+**Dependencies:** Task 4
 
 **Files likely touched:**
-- `composer.json` / `composer.lock`
-- `config/permission.php` (se publicado)
-- `database/seeders/RolePermissionSeeder.php`
-- `app/Models/User.php`
-- `tests/Feature/Authorization/RoleTest.php`
+- `app/Livewire/Forms/CustomerForm.php`
+- `app/Livewire/Customers/Create.php`
+- `resources/views/livewire/customers/create.blade.php`
+- `tests/Feature/Customers/CreateCustomerTest.php`
 
 **Estimated scope:** M
 
-## Task 6: CompanyPolicy + UserPolicy
+## Task 6: Edit + contacts + histórico vazio (CLI-02, CLI-04)
 
-**Description:** Autorização por model. Outra empresa = `denyAsNotFound()`. Sem `Policy::before` admin.
+**Description:** Editar ficha, repeater de contatos, um `is_primary`, callout de histórico.
 
 **Acceptance criteria:**
-- [x] Matriz §9: admin CRUD empresa/usuários; gestor leitura; demais deny
-- [x] Policy consulta Spatie + `company_id`
-- [x] Pest `assertForbidden` / 404 por papel
+- [ ] `/customers/{customer}/edit`; 404 se outra company
+- [ ] Contatos gravados pela relação `$customer->contacts()`
+- [ ] Callout CLI-04: sem orçamentos/OS/faturas ainda
+- [ ] Soft delete com `wire:confirm` (quem pode `delete`)
+- [ ] Gestor vê e não grava (403 no save)
 
 **Verification:**
-- [x] `php artisan test --compact tests/Feature/Authorization`
+- [ ] Pest: contato primary; comercial CRUD; gestor read-only; foreign 404
 
 **Dependencies:** Task 5
 
 **Files likely touched:**
-- `app/Policies/CompanyPolicy.php`
-- `app/Policies/UserPolicy.php`
-- `tests/Feature/Authorization/CompanyPolicyTest.php`
-- `tests/Feature/Authorization/UserPolicyTest.php`
-
-**Estimated scope:** M
-
-## Task 7: Livewire Company settings (AUTH-04)
-
-**Description:** Admin edita dados da empresa (Flux form, `wire:submit`, `$this->authorize`).
-
-**Acceptance criteria:**
-- [x] `Route::livewire` autenticado+verified; `#[Title]`
-- [x] Campos §8.1; logo disco `public` + `storage:link` depois
-- [x] Gestor vê; comercial 403
-
-**Verification:**
-- [x] `livewire(Edit::class)->actingAs($admin)->...`
-
-**Dependencies:** Task 6
-
-**Files likely touched:**
-- `app/Livewire/Settings/Company.php`
-- `resources/views/livewire/settings/company.blade.php`
-- `routes/settings.php`
-- `tests/Feature/Settings/CompanyUpdateTest.php`
-
-**Estimated scope:** M
-
-## Task 8: Admin cria usuário interno
-
-**Description:** Admin cria usuário da mesma company, já verificado, com papel Spatie. Sem `Registered`.
-
-**Acceptance criteria:**
-- [x] Senha em texto no model (cast `hashed`)
-- [x] `email_verified_at = now()`
-- [x] Inativo não lista como operacional (filtro `active`)
-
-**Verification:**
-- [x] Pest: usuário criado autentica; evento `Registered` não dispara
-
-**Dependencies:** Task 6
-
-**Files likely touched:**
-- `app/Livewire/Users/Index.php` / `Create.php`
-- `resources/views/livewire/users/*.blade.php`
-- `routes/web.php`
-- `tests/Feature/Users/CreateUserTest.php`
+- `app/Livewire/Customers/Edit.php`
+- `resources/views/livewire/customers/edit.blade.php`
+- `tests/Feature/Customers/EditCustomerTest.php`
 
 **Estimated scope:** M
 
 ## Checkpoint: Complete
-- [x] AUTH-01, AUTH-03, AUTH-04 cobertos por teste
-- [x] Pint + Pest verdes
-- [x] Pronto para review / Fase 2 (clientes)
+- [ ] CLI-01, CLI-02, CLI-03, CLI-05 cobertos por teste; CLI-04 estado vazio
+- [ ] Pint + Larastan + Pest verdes
+- [ ] Pronto para Fase 3 (catálogo)
