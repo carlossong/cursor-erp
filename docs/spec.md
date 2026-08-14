@@ -74,6 +74,13 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - `Route::resource` / controllers de domínio. UI é `Route::livewire` + `Route::view`. Sem `routes/api.php` até o P1.
 - `{quote:number}` / `#[RouteKey('number')]` — número comercial não é único global. Binding pelo `id`.
 - `Route::any`, `withRouting(using:)`, Folio, subdomain, URL hardcoded no lugar de `route()`.
+- `app/Http/Kernel.php`. Laravel 13 registra middleware só em `bootstrap/app.php` (`withMiddleware`) ([middleware](https://laravel.com/docs/13.x/middleware)).
+- `$middleware->use([...])` substituindo o *global stack* default (`TrustProxies`, `PreventRequestsDuringMaintenance`, `TrimStrings`, …).
+- `$middleware->group('web', [...])` *substituindo* o grupo `web` — apaga sessão, CSRF (`PreventRequestForgery`), `SubstituteBindings` e o `AuthenticateSession` do `authenticateSessions()`, a menos que se recopiem todas as classes. Só `web(append:)` / `web(prepend:)`.
+- `withoutMiddleware` de CSRF (`PreventRequestForgery`) ou de `auth` nas rotas do painel.
+- `EnsureUserHasRole` / `role:` como modelo de autorização do domínio. Papéis = Spatie **dentro** da policy. Alias `can` (e `role:` do Spatie, se existir) só como camada extra.
+- `priority()` customizado no MVP, salvo um middleware novo que **tenha** de correr *antes* de `SubstituteBindings`.
+- Middleware terminável (`terminate`) e classes vazias “por precaução”. `make:middleware` só com comportamento concreto.
 
 ### 1.2 Diagrama de contexto
 
@@ -90,11 +97,11 @@ flowchart TB
 
 ### 1.3 Convenções Laravel 13 que esta spec segue
 
-Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [verification](https://laravel.com/docs/13.x/verification), [passwords](https://laravel.com/docs/13.x/passwords), [hashing](https://laravel.com/docs/13.x/hashing), [authorization](https://laravel.com/docs/13.x/authorization), [routing](https://laravel.com/docs/13.x/routing), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
+Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [verification](https://laravel.com/docs/13.x/verification), [passwords](https://laravel.com/docs/13.x/passwords), [hashing](https://laravel.com/docs/13.x/hashing), [authorization](https://laravel.com/docs/13.x/authorization), [routing](https://laravel.com/docs/13.x/routing), [middleware](https://laravel.com/docs/13.x/middleware), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
 
 1. **Criar o app** com `laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction`.
 2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). App autenticado em `/dashboard`. Telescope só nesse ambiente.
-3. **Bootstrap:** `bootstrap/app.php` + `bootstrap/providers.php`. `withRouting(web, commands, health: '/up')`. Auth: Fortify. Redirects: `redirectGuestsTo(route('login'))`, `redirectUsersTo(route('dashboard'))`; `authenticateSessions()`; `trustHosts()` ([routing](https://laravel.com/docs/13.x/routing#the-default-route-files)).
+3. **Bootstrap:** `bootstrap/app.php` + `bootstrap/providers.php`. `withRouting(web, commands, health: '/up')`. Auth: Fortify. Redirects: `redirectGuestsTo(route('login'))`, `redirectUsersTo(route('dashboard'))`; `authenticateSessions()`; `trustHosts()`. Middleware: só `withMiddleware` — sem Kernel ([middleware](https://laravel.com/docs/13.x/middleware), [routing](https://laravel.com/docs/13.x/routing#the-default-route-files)).
 4. **Schedule** em `routes/console.php` (`Schedule::job(...)->dailyAt('01:00')`), não em `app/Console/Kernel.php` (não existe mais no skeleton). Tokens de reset: `Schedule::command('auth:clear-resets')->everyFifteenMinutes()` ([passwords](https://laravel.com/docs/13.x/passwords#deleting-expired-tokens)).
 5. **Jobs** com atributos PHP 8 do framework: `#[Tries(5)]`, `#[Backoff(60)]`, `#[Timeout(120)]`. Roteamento central: `Queue::route(GenerateDocumentPdfJob::class, connection: 'redis', queue: 'pdfs')`.
 6. **Policies** com `php artisan make:policy QuotePolicy --model=Quote` (ou `make:model Quote -mfs --policy`). Discovery automática (`app/Policies`). Livewire: `$this->authorize('update', $quote)` / `create` com `Quote::class`. Blade: `@can`. 403 vira `AuthorizationException` ([authorization](https://laravel.com/docs/13.x/authorization)).
@@ -112,10 +119,11 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 18. **Hashing** bcrypt (`HASH_DRIVER=bcrypt`, `BCRYPT_ROUNDS=12`). Senha no `User` com cast `hashed` — sem `Hash::make` no assign. Rehash no login. `HASH_VERIFY` ligado. Testes: `BCRYPT_ROUNDS=4` ([hashing](https://laravel.com/docs/13.x/hashing)).
 19. **Reset de senha** Fortify (`Features::resetPasswords()`). Broker `users`, driver `database`, token 60 min, throttle 60 s. `trustHosts()` no bootstrap. Sem rotas manuais ([passwords](https://laravel.com/docs/13.x/passwords)).
 20. **Rotas** em `routes/web.php` (grupo `web`: sessão + CSRF) + `routes/console.php`. Painel: `Route::livewire` / `Route::view` com `->name()`. `{quote}` = implicit binding pelo `id`. Sem `api.php` até `install:api`. Deploy: `route:cache` via `optimize` ([routing](https://laravel.com/docs/13.x/routing)).
+21. **Middleware** em `bootstrap/app.php` (`append` / `web(append:)` / `alias`). Grupo `web` default (EncryptCookies, sessão, `PreventRequestForgery`, `SubstituteBindings`). Aliases: `auth`, `verified`, `password.confirm`, `can`, `signed`, `throttle`, `guest`. Fase 1: `EnsureUserIsActive` quando existir `users.is_active`. Sem `use()` / `group('web')` substituindo o stack ([middleware](https://laravel.com/docs/13.x/middleware)).
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
-Fontes: Eloquent, Queues, Mail, Notifications, Errors, Livewire, Fortify, Authorization, Hashing, Routing, starter kit.
+Fontes: Eloquent, Queues, Mail, Notifications, Errors, Livewire, Fortify, Authorization, Hashing, Routing, Middleware, starter kit.
 
 **Criação (desvio consciente do playbook de agentes)**
 
@@ -241,7 +249,7 @@ Ações em `app/Actions/Fortify` (`CreateNewUser`, `ResetUserPassword`). Sem reg
 | Outras sessões | `authenticateSessions()` no grupo `web`. Troca de senha em Configurações chama `Auth::logoutOtherDevices($newPassword)` ([invalidating sessions](https://laravel.com/docs/13.x/authentication#invalidating-sessions-on-other-devices)). |
 | Confirmar senha | Middleware `password.confirm` em `settings/security`. Timeout `AUTH_PASSWORD_TIMEOUT` (3 h, `config/auth.php`). |
 | Rehash | Cast `password => hashed` no `User`. Rehash automático no login (`rehash_on_login`); **não** desligar. Sem `Hash::make` no `update`/`create` da senha. |
-| Usuário inativo | Fase 1: coluna `users.is_active`. Aí `Fortify::authenticateUsing` (ou credencial extra `is_active => true` no `attempt`) recusa inativo. **Não** agora — a coluna ainda não existe. |
+| Usuário inativo | Fase 1: coluna `users.is_active`. Login recusa via `Fortify::authenticateUsing` / `is_active => true`. Sessão já aberta: middleware `EnsureUserIsActive` no grupo autenticado. **Não** agora — a coluna ainda não existe. |
 | Eventos | `Login`, `Failed`, `Logout`, `Lockout`, `Verified`, `PasswordReset` — gancho para log de acesso. AUTH-05 continua sendo auditoria de **documento** (`spatie/laravel-activitylog`). |
 
 Não escrever `LoginController` nem `Auth::attempt` no app. Não hashear a senha do request antes do Fortify.
@@ -291,6 +299,25 @@ Arquivos: `routes/web.php` (grupo `web`: sessão, cookie, CSRF) e `routes/consol
 | Rate limit | Fortify (login/2FA/passkeys). Sem throttle extra no painel autenticado. Público (P1) ganha limiter próprio. |
 | Cache | `php artisan optimize` em prod (`route:cache`). Listar: `php artisan route:list --except-vendor`. |
 | API / CORS | `install:api` no P1. Sem `routes/api.php` agora. |
+
+**Middleware** ([middleware](https://laravel.com/docs/13.x/middleware))
+
+O Laravel 13 **não tem** `app/Http/Kernel.php`. O stack vive só em `bootstrap/app.php` via `->withMiddleware(function (Middleware $middleware): void { ... })`. Classe nova: `php artisan make:middleware Nome` → `app/Http/Middleware`.
+
+Já alinhado no kit (não desfazer): `web.php` recebe o grupo **`web`** (EncryptCookies, sessão, `PreventRequestForgery`, `SubstituteBindings`); `redirectGuestsTo` / `redirectUsersTo` (`auth` / `guest`); `authenticateSessions()` (`AuthenticateSession` no `web`); `trustHosts()` (não corre em `local` nem em testes). Aliases nas rotas: `auth`, `verified`, `password.confirm`.
+
+| Tema | Como |
+|---|---|
+| Registrar | Só `bootstrap/app.php`: `append` / `prepend` (global), `web(append:)` / `web(prepend:)` (painel), `alias([...])`. Preferir `web(append:)` para checagens autenticadas — CSRF, sessão e `AuthenticateSession` ficam no default. |
+| Não substituir | Sem `$middleware->use([...])` (troca o global stack). Sem `$middleware->group('web', [...])` (apaga o grupo default). Sem `web(remove: SubstituteBindings)` — o implicit binding de `{quote}` depende disso. Sem `web(replace:)` de `StartSession` / CSRF. |
+| Rota | `->middleware(['auth', 'verified'])` no grupo do painel; `password.confirm` em segurança. Classe concreta ou alias — não FQCN longo repetido se houver alias. |
+| Excluir | `withoutMiddleware` só para um middleware **nosso** numa rota pontual. **Nunca** CSRF nem `auth` no painel. Não remove middleware global. |
+| Aliases oficiais | `auth`, `guest`, `verified`, `password.confirm`, `can`, `signed`, `throttle`. Sem `auth.basic`. Sem Spark `subscribed`. Alias custom só quando a classe existir (`$middleware->alias`). |
+| Autorização | Alias `can` na rota é **camada extra** (`->can('view', 'quote')`). A decisão continua na **policy**. Não inventar `EnsureUserHasRole`. Spatie `role:` / `permission:` só em tela de admin, nunca no lugar da policy. |
+| Ordem | Sem `priority()` no MVP. Se um middleware novo tiver de correr *antes* de `SubstituteBindings`, aí `prependToPriorityList(before: SubstituteBindings::class, …)`. |
+| Terminável | Sem `terminate` / singleton de middleware no MVP. |
+| Hosts / proxy | Manter `trustHosts()`. `trustProxies` só se o ERP for atrás de load balancer. |
+| Fase 1 | `EnsureUserIsActive`: se `$request->user()` existir e `is_active === false`, logout + invalidar sessão + redirect `login`. Registrar no grupo `auth`+`verified` (ou `web(append:)` com *early return* se guest). Login em si: Fortify. Criar a classe **junto** da migration `users.is_active` — não agora. |
 
 **Verificação de e-mail** ([verification](https://laravel.com/docs/13.x/verification))
 
@@ -368,6 +395,7 @@ bootstrap/
   providers.php
 app/
   Enums/
+  Http/Middleware/     # custom (Fase 1: EnsureUserIsActive)
   Models/
   Policies/
   Observers/
@@ -1080,7 +1108,7 @@ Ordem rígida — cada fase mergeável e testável.
 | Fase | Entrega | Critério de pronto |
 |---|---|---|
 | **0** | Starter kit Livewire + Blade (classe) + Fortify sem registro + `MustVerifyEmail` + locale pt_BR + Eloquent `shouldBeStrict` | `/login` e `/dashboard` funcionam, `/register` 404, e-mail não verificado não entra no painel, `/up` 200, `php artisan test` verde |
-| **1** | Company, users, papéis Spatie, `UserPolicy` / `CompanyPolicy` | AUTH-* |
+| **1** | Company, users (`is_active`), papéis Spatie, `UserPolicy` / `CompanyPolicy`, `EnsureUserIsActive` | AUTH-* |
 | **2** | Clientes + contatos | CLI-* |
 | **3** | Categorias e serviços | CAT-* |
 | **4** | Orçamentos + itens + totais + PDF + estados + revisão + job expirar | ORC-* |
@@ -1158,6 +1186,7 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 | Hashing (bcrypt, `hashed` cast, rehash, `HASH_VERIFY`) | https://laravel.com/docs/13.x/hashing |
 | Resetting passwords (broker, tokens, `auth:clear-resets`) | https://laravel.com/docs/13.x/passwords |
 | Routing (`web.php`, named routes, implicit binding) | https://laravel.com/docs/13.x/routing |
+| Middleware (`bootstrap/app.php`, grupo `web`, aliases) | https://laravel.com/docs/13.x/middleware |
 | Fortify (auth do kit) | https://laravel.com/docs/13.x/fortify |
 | Installation (`laravel new`, `composer run dev`) | https://laravel.com/docs/13.x/installation |
 | Playbook de agentes (default React — **não** usamos) | https://laravel.com/for/agents |
