@@ -51,6 +51,7 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - PK UUID/ULID, PK composta, `#[Unguarded]` / `$guarded = []`. Eloquent exige um `id` único; unique composto é índice extra, não PK.
 - `$table->enum()` nativo para status. Coluna `string` + cast PHP enum — alterar casos não exige `using()` no PostgreSQL nem quebra o sqlite dos testes.
 - Editar migration já rodada/commitada. `schema:dump --prune` só depois do MVP, se o diretório inflar.
+- `Paginator::useBootstrapFive()` / views Bootstrap. O kit é Tailwind + Flux; `app.css` já faz `@source` das views de paginação Laravel.
 - `whereRaw` / `selectRaw` sem bindings; `orderBy` com nome de coluna do usuário; `DB::table()` no domínio (usar o model). Similarity/pgvector e `whereFullText` fora do MVP.
 - `routes/api.php` até o P1 (`install:api`). CSRF do painel permanece; Laravel 13 formalizou `PreventRequestForgery`.
 
@@ -69,7 +70,7 @@ flowchart TB
 
 ### 1.3 Convenções Laravel 13 que esta spec segue
 
-Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [eloquent](https://laravel.com/docs/13.x/eloquent), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
+Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [eloquent](https://laravel.com/docs/13.x/eloquent), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
 
 1. **Criar o app** com `laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction`.
 2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). App autenticado em `/dashboard`. Telescope só nesse ambiente.
@@ -83,6 +84,7 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 10. **Boost** na criação (`laravel new … --boost`) para o Cursor consultar a doc na versão instalada.
 11. **Migrations** anônimas (`return new class extends Migration`), geradas por Artisan. Deploy: `php artisan migrate --force --isolated`. Testes sqlite com `foreign_key_constraints` ligado ([migrations](https://laravel.com/docs/13.x/migrations)).
 12. **Queries** via Eloquent (mesmo query builder). Bindings PDO; **nunca** coluna/`orderBy` vindo do request. Jobs: `lazyById`. Numeração: `lockForUpdate` + `increment` dentro de `DB::transaction` ([queries](https://laravel.com/docs/13.x/queries)).
+13. **Paginação** `paginate(15)` (`LengthAwarePaginator`) nas listagens Livewire + `<flux:pagination>`. Tailwind default do kit; **não** Bootstrap. `cursorPaginate` fora do MVP ([pagination](https://laravel.com/docs/13.x/pagination)).
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
@@ -149,7 +151,7 @@ Eloquent, não `DB::table()`, nas tabelas de domínio. O builder usa PDO — bin
 |---|---|
 | Listagens Livewire | `when($this->status, …)`, busca `whereAny([...], 'like', …)` ou `whereLike` (case-insensitive). `orWhere` sempre agrupado em closure. |
 | Sort | allowlist (`number`, `valid_until`, `total`, `created_at`). Default `latest()`. |
-| Paginação | `paginate(15)` (NFR-08). Índice composto na mesma ordem do `orderBy`. |
+| Paginação | `paginate(15)` → `LengthAwarePaginator` (total + números de página, NFR-08). UI: `<flux:pagination :paginator="$quotes" />`. Livewire: `WithPagination`; `$this->resetPage()` ao mudar filtro. Dois paginators na mesma tela: `pageName:` distinto. `withQueryString()` só se a listagem for request HTTP clássico (não é o caso Livewire). `simplePaginate` / `cursorPaginate` só se o `COUNT` do `paginate` estourar NFR-02 — cursor exige `orderBy` em coluna única, sem `null`. Sem JSON de paginator (API fora do MVP). |
 | Relação | `whereBelongsTo($customer)`; `whereIn('customer_id', Customer::query()->whereLike('name', …)->select('id'))` em vez de `whereHas` pesado. |
 | JSON endereço | gravar o objeto inteiro. `where('address_json->city', $city)` só se houver filtro de cidade. |
 | Dashboard REL-01..03 | **um** `selectRaw` com `count(case when …)` + bindings + `toBase()`. Não N `count()`. |
@@ -171,6 +173,7 @@ PDF e e-mail: `ShouldQueue` + `->afterCommit()` depois de gravar o documento. `S
 - Ações de status chamam `QuoteService` / `InvoiceService`, não gravam status no componente.
 - Testes Pest: `livewire(ListQuotes::class)` e HTTP tests nas rotas.
 - Anexos: upload Livewire/Blade + disco Laravel (`storage`).
+- Paginação: `paginate(15)` + `<flux:pagination>`. Traduções em `lang/pt_BR.json` (`Showing`, `results`, `pagination.previous`). As chaves `__('to')` / `__('of')` são do Flux — não usar essas strings soltas em outras telas.
 
 **Fortify (auth do kit)** ([authentication](https://laravel.com/docs/13.x/starter-kits#authentication), [enabling features](https://laravel.com/docs/13.x/starter-kits#enabling-and-disabling-features))
 
@@ -839,7 +842,7 @@ Rotas autenticadas em `routes/web.php` (`auth`, `verified`). Componentes em clas
 | `Livewire\Settings\...` | já vem no kit (perfil, senha, aparência) |
 | `dashboard` (view) | KPIs REL-01..03 |
 
-Layout sidebar Flux (`resources/views/layouts/app.blade.php`). Listagens: `when()` + `whereLike`/`whereAny` + `paginate(15)`; `orderBy` só com coluna na allowlist. Ações de status chamam services + `DB::transaction`. Testes: `livewire(...)` + `actingAs`. Assert no **banco**.
+Layout sidebar Flux (`resources/views/layouts/app.blade.php`). Listagens: trait `Livewire\WithPagination`, `when()` + `whereLike`/`whereAny` + `paginate(15)`, `orderBy` só com coluna na allowlist, `<flux:pagination :paginator="$items" />`. Ações de status chamam services + `DB::transaction`. Testes: `livewire(...)` + `actingAs`. Assert no **banco**.
 
 ---
 
@@ -1003,6 +1006,7 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 | Database (PG 10+) | https://laravel.com/docs/13.x/database |
 | Migrations (`foreignIdFor`, `constrained`, `--isolated`) | https://laravel.com/docs/13.x/migrations |
 | Query builder (`when`, `whereLike`, `lazyById`, `lockForUpdate`, `increment`) | https://laravel.com/docs/13.x/queries |
+| Pagination (`paginate`, Flux, Tailwind) | https://laravel.com/docs/13.x/pagination |
 | Eloquent (models, strictness, Fillable, scopes, observers) | https://laravel.com/docs/13.x/eloquent |
 | Eloquent relationships (`with`, chaperone, morph map, hasOne of many) | https://laravel.com/docs/13.x/eloquent-relationships |
 | Scheduling (`routes/console.php`) | https://laravel.com/docs/13.x/scheduling |
