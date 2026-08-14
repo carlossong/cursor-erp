@@ -39,7 +39,7 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 
 - **Starter kit React/Vue/Svelte.** O playbook [laravel.com/for/agents](https://laravel.com/for/agents) defaulta `--react`. Este produto é backoffice em PHP: **`--livewire --livewire-class-components`**.
 - **Filament.** A UI é Livewire + Blade + Flux; Resources/painel `/admin` não entram.
-- **Volt / SFC.** Componentes em **classe** (`app/Livewire`) + view Blade (`resources/views/livewire`), não single-file. A árvore `resources/views/pages` da [doc do kit Livewire](https://laravel.com/docs/13.x/starter-kits#livewire-customization) é a variante Volt; não usamos.
+- **Volt / SFC / MFC.** Componentes em **classe** (`app/Livewire` + `resources/views/livewire`). Sem arquivos `⚡`, sem `pages::`, sem `livewire:convert` para SFC. Default do `make:livewire` neste repo: `config/livewire.php` `make_command.type = class` ([components](https://livewire.laravel.com/docs/4.x/components#class-based-components)).
 - **Teams do starter kit.** O kit Livewire *pode* nascer com teams (`/{current_team}/dashboard`). Este ERP **não** usa isso: uma empresa no MVP, `company_id` nas tabelas, papéis Spatie.
 - **WorkOS AuthKit.** Login, senha, reset e 2FA são Fortify nativo. Sem SSO/social no MVP.
 - **Telescope em produção.** É ferramenta de debug local.
@@ -90,6 +90,11 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - `make:model Quote --all` (gera controller). Usar `-mfs --policy`.
 - `LoginController`, `HasMiddleware` / `#[Middleware]` / `#[WithoutMiddleware]` em classe de CRUD, `#[Authorize]` no Livewire (Livewire usa `$this->authorize()`).
 - Camada Repository injetada no controller (exemplo da doc). Domínio = Service + Eloquent.
+- Método público Livewire sem `$this->authorize()` que muda documento. Qualquer método público é chamável pelo cliente ([security](https://livewire.laravel.com/docs/4.x/security)). Helpers internos: `protected`/`private`.
+- `public $quoteId` / Collection Eloquent de listagem como propriedade. Model: `public Quote $quote` (Livewire trava o id). Listagem: `#[Computed]`. `#[Locked]` se o id for escalar.
+- `wire:model.live` em campos de dinheiro/totais. Default deferred; busca: `.live.debounce`. Sem gravar orçamento no `updated()`.
+- Método/propriedade chamada `upload` (reservado). Paginação `->links()` / tema Bootstrap — UI é `<flux:pagination>`.
+- Publicar assets Livewire (`livewire:publish --assets`), `inject_assets => false`, endpoint `/livewire/update` custom, bundle manual Alpine — só se o deploy exigir.
 
 ### 1.2 Diagrama de contexto
 
@@ -106,7 +111,7 @@ flowchart TB
 
 ### 1.3 Convenções Laravel 13 que esta spec segue
 
-Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [verification](https://laravel.com/docs/13.x/verification), [passwords](https://laravel.com/docs/13.x/passwords), [hashing](https://laravel.com/docs/13.x/hashing), [authorization](https://laravel.com/docs/13.x/authorization), [routing](https://laravel.com/docs/13.x/routing), [middleware](https://laravel.com/docs/13.x/middleware), [csrf](https://laravel.com/docs/13.x/csrf), [controllers](https://laravel.com/docs/13.x/controllers), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
+Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [authentication](https://laravel.com/docs/13.x/authentication), [verification](https://laravel.com/docs/13.x/verification), [passwords](https://laravel.com/docs/13.x/passwords), [hashing](https://laravel.com/docs/13.x/hashing), [authorization](https://laravel.com/docs/13.x/authorization), [routing](https://laravel.com/docs/13.x/routing), [middleware](https://laravel.com/docs/13.x/middleware), [csrf](https://laravel.com/docs/13.x/csrf), [controllers](https://laravel.com/docs/13.x/controllers), [Livewire 4](https://livewire.laravel.com/docs/4.x), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
 
 1. **Criar o app** com `laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction`.
 2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). App autenticado em `/dashboard`. Telescope só nesse ambiente.
@@ -131,10 +136,11 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 21. **Middleware** em `bootstrap/app.php` (`append` / `web(append:)` / `alias`). Grupo `web` default (EncryptCookies, sessão, `PreventRequestForgery`, `SubstituteBindings`). Aliases: `auth`, `verified`, `password.confirm`, `can`, `signed`, `throttle`, `guest`. Fase 1: `EnsureUserIsActive` quando existir `users.is_active`. Sem `use()` / `group('web')` substituindo o stack ([middleware](https://laravel.com/docs/13.x/middleware)).
 22. **CSRF** `PreventRequestForgery` no grupo `web`. Dois níveis: `Sec-Fetch-Site` (same-origin) e token de sessão. Forms Blade POST/PUT/PATCH/DELETE: `@csrf`. Livewire manda o token sozinho. Sem `except` / `originOnly` / `allowSameSite` no MVP. Testes: CSRF desligado automaticamente ([csrf](https://laravel.com/docs/13.x/csrf)).
 23. **Controllers** não fazem o CRUD do painel. UI = Livewire. Exceção: invokable (`--invokable`) só para resposta binária (PDF/anexo). Sem `Route::resource`. Base vazia `app/Http/Controllers/Controller.php` fica como está ([controllers](https://laravel.com/docs/13.x/controllers)).
+24. **Livewire 4** class components: `make:livewire Quotes/Index --class` (default neste repo). Páginas: `Route::livewire` + `#[Title]` + `public Quote $quote`. Forms: `wire:submit`. Listagens: `WithPagination` + `#[Computed]` + `resetPage()`. Ações: `$this->authorize()`. Anexos: `WithFileUploads`. Links internos: `wire:navigate` ([Livewire 4](https://livewire.laravel.com/docs/4.x)).
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
-Fontes: Eloquent, Queues, Mail, Notifications, Errors, Livewire, Fortify, Authorization, Hashing, Routing, Middleware, CSRF, Controllers, starter kit.
+Fontes: Eloquent, Queues, Mail, Notifications, Errors, Livewire 4, Fortify, Authorization, Hashing, Routing, Middleware, CSRF, Controllers, starter kit.
 
 **Criação (desvio consciente do playbook de agentes)**
 
@@ -226,15 +232,31 @@ Debug local: `dumpRawSql()` / `toSql()`. Nunca em produção.
 
 PDF e e-mail: `ShouldQueue` + `->afterCommit()` depois de gravar o documento. `ShouldBeUnique` no PDF. Horizon em staging/prod; local o `composer run dev` já sobe worker.
 
-**Livewire 4 + Blade** ([starter kits](https://laravel.com/docs/13.x/starter-kits#livewire))
+**Livewire 4 + Blade** ([docs Livewire 4](https://livewire.laravel.com/docs/4.x), [starter kits](https://laravel.com/docs/13.x/starter-kits#livewire))
 
-- Kit: Livewire 4, Tailwind, [Flux UI](https://fluxui.dev/). Código do kit vive no app (não se “atualiza” o kit — [FAQ](https://laravel.com/docs/13.x/starter-kits#faq-upgrade)).
-- Páginas e formulários em `app/Livewire` + `resources/views/livewire/*.blade.php` (class components). Layout autenticado: **sidebar** em `resources/views/layouts/app.blade.php` (default do kit). Header só se trocarmos para `<x-layouts::app.header>` **e** `flux:main container`.
-- Auth layout: **simple** em `resources/views/layouts/auth.blade.php`. Alternativas do kit: `card` e `split`.
-- Ações de status chamam `QuoteService` / `InvoiceService`, não gravam status no componente.
-- Testes Pest: `livewire(ListQuotes::class)` e HTTP tests nas rotas.
-- Anexos: upload Livewire/Blade + disco Laravel (`storage`).
-- Paginação: `paginate(15)` + `<flux:pagination>`. Traduções em `lang/pt_BR.json` (`Showing`, `results`, `pagination.previous`). As chaves `__('to')` / `__('of')` são do Flux — não usar essas strings soltas em outras telas.
+Kit: Livewire `^4.1`, Tailwind, [Flux UI 2](https://fluxui.dev/), Blaze. Código do kit vive no app (não se “atualiza” o kit — [FAQ](https://laravel.com/docs/13.x/starter-kits#faq-upgrade)). Layout autenticado: **sidebar**. Auth: **simple**. `config/livewire.php` publicado só para `make_command.type = class` (o default upstream é SFC).
+
+| Tema | Como |
+|---|---|
+| Criar | `php artisan make:livewire Quotes/Index` (classe). PHP em `app/Livewire/Quotes/Index.php`; view `resources/views/livewire/quotes/index.blade.php`. View: **um** elemento raiz. |
+| Página | `Route::livewire('quotes/{quote}', Show::class)->name('quotes.show')`. `#[Title('…')]`. Binding: `public Quote $quote` no `mount` (ou propriedade pública — o id fica travado). |
+| Nested | Filho pontual (`<livewire:settings.delete-user-form />`). **Não** um componente Livewire por linha de tabela. `@foreach` com `wire:key="{{ $quote->id }}"`. |
+| Props | Formulário: `public string $name`. Documento: `public Quote $quote`, não `public int $quoteId`. Listagem: `#[Computed]` — não guardar Collection Eloquent de 15 linhas como propriedade (re-query a cada request; `select()` não sobrevive). |
+| Locked | Model já é locked. Id escalar: `#[Locked]`. Não substitui `$this->authorize()`. |
+| Forms | `wire:submit="save"`. `$this->validate()` **antes** de persistir. Form object (`app/Livewire/Forms/QuoteForm`) quando Edit/Create tiver muitos campos. `#[Validate]` com `onUpdate: false` (ou `rules()`) — sem validar a cada tecla em dinheiro. |
+| Binding | Default deferred. Busca: `wire:model.live.debounce.300ms`. Sem `.live` em preço/qtd. Sem `updated()` gravando documento. |
+| Ações | `wire:click="send"` / `delete(Quote $quote)` (implicit binding). Parâmetro = input não confiável → `$this->authorize()`. Método que não é ação HTTP: `protected`. Confirmar destrutivo: `wire:confirm`. |
+| Redirect | `$this->redirect(route('quotes.index'), navigate: true)`. Kit já usa `wire:navigate` no sidebar. |
+| Paginação | `WithPagination` + `paginate(15)` + `<flux:pagination :paginator="$this->quotes" />`. `resetPage()` ao filtrar. Dois paginators: `pageName:`. Sem `->links()`, sem Bootstrap, sem `WithoutUrlPagination` nas listagens (URL `?page=` é desejável). |
+| Upload | `WithFileUploads` + `wire:model="files"`. Validar mime + `max:10240` (10 MB, NFR). `store()` no disco. Preview imagem: `temporaryUrl()`. Nome de método **não** `upload`. S3 direto só em prod se configurarmos `LIVEWIRE_TEMPORARY_FILE_UPLOAD_DISK`. |
+| Loading | `wire:loading` / `data-loading:` no submit. Flux toast no sucesso (`Flux::toast`), como o perfil do kit. |
+| Teste | Pest: `livewire(Index::class)->set(...)->call('send')->assertHasNoErrors()` / `assertForbidden()`. Upload: `UploadedFile::fake()`. |
+| Assets | Zero-config: não desligar `inject_assets`, não publicar JS, não `setUpdateRoute`. Alpine vem com o Livewire. |
+| Persistência de middleware | `auth` / `can` / `verified` já são persistentes. Fase 1: `Livewire::addPersistentMiddleware([EnsureUserIsActive::class])` no `AppServiceProvider` **além** de aplicar na rota. |
+
+Ações de status chamam `QuoteService` / `InvoiceService`, não `update(['status' => …])` no componente.
+
+**Fortify (auth do kit)** ([authentication](https://laravel.com/docs/13.x/authentication), [starter kits — authentication](https://laravel.com/docs/13.x/starter-kits#authentication), [Fortify](https://laravel.com/docs/13.x/fortify))
 
 **Fortify (auth do kit)** ([authentication](https://laravel.com/docs/13.x/authentication), [starter kits — authentication](https://laravel.com/docs/13.x/starter-kits#authentication), [Fortify](https://laravel.com/docs/13.x/fortify))
 
@@ -328,7 +350,7 @@ Já alinhado no kit (não desfazer): `web.php` recebe o grupo **`web`** (Encrypt
 | Ordem | Sem `priority()` no MVP. Se um middleware novo tiver de correr *antes* de `SubstituteBindings`, aí `prependToPriorityList(before: SubstituteBindings::class, …)`. |
 | Terminável | Sem `terminate` / singleton de middleware no MVP. |
 | Hosts / proxy | Manter `trustHosts()`. `trustProxies` só se o ERP for atrás de load balancer. |
-| Fase 1 | `EnsureUserIsActive`: se `$request->user()` existir e `is_active === false`, logout + invalidar sessão + redirect `login`. Registrar no grupo `auth`+`verified` (ou `web(append:)` com *early return* se guest). Login em si: Fortify. Criar a classe **junto** da migration `users.is_active` — não agora. |
+| Fase 1 | `EnsureUserIsActive`: se `$request->user()` existir e `is_active === false`, logout + invalidar sessão + redirect `login`. Registrar no grupo `auth`+`verified` **e** `Livewire::addPersistentMiddleware([EnsureUserIsActive::class])` — o AJAX do Livewire reaplica. Login em si: Fortify. Criar a classe **junto** da migration `users.is_active` — não agora. |
 
 **CSRF** ([csrf](https://laravel.com/docs/13.x/csrf))
 
@@ -447,6 +469,7 @@ app/
   Services/
   Livewire/            # páginas e formulários (classe)
     Quotes/
+    Forms/             # Livewire\Form (Create/Edit grandes)
     WorkOrders/
     Invoices/
   Jobs/
@@ -467,6 +490,7 @@ routes/settings.php
 routes/console.php
 docs/prd.md
 docs/spec.md
+config/livewire.php          # make_command.type = class
 tests/Feature/
 tests/Unit/
 ```
@@ -1071,13 +1095,13 @@ Rotas autenticadas em `routes/web.php` (`auth`, `verified`). Componentes em clas
 | `Livewire\Settings\...` | `routes/settings.php` | `profile.edit`, `security.edit`, `appearance.edit` |
 | `dashboard` (view) | `/dashboard` | `dashboard` |
 
-Layout sidebar Flux (`resources/views/layouts/app.blade.php`). Listagens: trait `Livewire\WithPagination`, `when()` + `whereLike`/`whereAny` + `paginate(15)`, `orderBy` só com coluna na allowlist, `<flux:pagination :paginator="$items" />`. Ações de status: `$this->authorize()` **depois** `QuoteService` + `DB::transaction`. Botões com `@can`. Testes: `livewire(...)` + `actingAs`. Assert no **banco** e `assertForbidden()` por papel.
+Layout sidebar Flux (`resources/views/layouts/app.blade.php`). `#[Title]` em cada página. Listagens: `WithPagination`, `#[Computed]` para a query, `when()` + `whereLike`/`whereAny` + `paginate(15)`, `orderBy` só com coluna na allowlist, `resetPage()` no filtro, `<flux:pagination :paginator="$this->items" />`, `wire:key` no `@foreach`. Forms: `wire:submit` + `$this->validate()`. Ações de status: `$this->authorize()` **depois** `QuoteService` + `DB::transaction`. Botões com `@can` **e** authorize na ação (método público é chamável). Links internos: `wire:navigate`. Redirect: `navigate: true`. Testes: `livewire(...)` + `actingAs`. Assert no **banco** e `assertForbidden()` por papel. View: um elemento raiz.
 
 ---
 
 ## 14. Validação (Form Requests / Livewire)
 
-Validação do painel: Livewire (`$this->validate()` / regras no componente). **Não** gerar Form Request via `make:controller --requests` — não há resource controller. Form Request só se um invokable HTTP (PDF/anexo) precisar validar query/input; o download típico não valida form.
+Validação do painel: Livewire `$this->validate()` **antes** de gravar. Preferir `rules()` ou `#[Validate(..., onUpdate: false)]` — validação a cada tecla só em busca, não em dinheiro. Form object (`Livewire\Form`) em Create/Edit grandes (`app/Livewire/Forms/QuoteForm`). **Não** Form Request de controller. Sem `#[Rule]` (deprecated; usar `#[Validate]`).
 
 - CNPJ/CPF: algoritmo de dígitos (`league/iso3166` não cobre; usar regra custom ou `laravellegends/pt-br-validator`).
 - E-mail RFC.
@@ -1261,4 +1285,9 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 | Testing (Pest / Feature) | https://laravel.com/docs/13.x/testing |
 | Mail / Notifications | https://laravel.com/docs/13.x/mail · https://laravel.com/docs/13.x/notifications |
 | Laravel Boost | https://laravel.com/docs/13.x/boost |
-| Livewire 4 | https://livewire.laravel.com/docs/4.x |
+| Livewire 4 (class components, pages, security) | https://livewire.laravel.com/docs/4.x |
+| Livewire components (`--class`) | https://livewire.laravel.com/docs/4.x/components |
+| Livewire pages (`Route::livewire`, `#[Title]`) | https://livewire.laravel.com/docs/4.x/pages |
+| Livewire properties / `#[Locked]` / `#[Computed]` | https://livewire.laravel.com/docs/4.x/properties |
+| Livewire actions / security | https://livewire.laravel.com/docs/4.x/actions · https://livewire.laravel.com/docs/4.x/security |
+| Livewire forms / validation / uploads / pagination | https://livewire.laravel.com/docs/4.x/forms · https://livewire.laravel.com/docs/4.x/validation · https://livewire.laravel.com/docs/4.x/uploads · https://livewire.laravel.com/docs/4.x/pagination |
