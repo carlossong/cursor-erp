@@ -1,189 +1,159 @@
-# Fase 1 — todo
+# Fase 3 — todo
 
-Fonte: `docs/spec.md` §8.1–8.2, §9, §18. Verificação: `php artisan test`. DoD: `.cursor/references/definition-of-done.md` (Pest + Pint + sem lazy load).
+Fonte: `docs/spec.md` §8.4, §9, §13; `docs/prd.md` CAT-01..03 (CAT-04 gancho no catálogo). Verificação: `php artisan test`. DoD: Pest + Pint + Larastan + sem lazy load.
 
-## Task 1: Company (schema + model + factory)
+## Task 1: Unit + BillingMode + ServiceCategory
 
-**Description:** Tabela `companies` e model Eloquent com endereço JSON e defaults comerciais.
+**Description:** Enums de unidade e modo de faturamento; tabela de categorias (CAT-02).
 
 **Acceptance criteria:**
-- [x] Migration anônima `create_companies_table` com colunas da spec §8.1 (`jsonb` em `address`)
-- [x] `Company` com `HasFactory`, `#[Fillable]`, `casts()` (`address` → `array`, decimais, ints), `$attributes` dos defaults, `users(): HasMany`
-- [x] Factory preenche CNPJ 14 dígitos e `address` com street/city/state/zip
+- [ ] `App\Enums\Unit` (`hora`, `un`, `m2`, `mes`, `vb`) com `label()`
+- [ ] `App\Enums\BillingMode` (`exige_os`, `faturamento_imediato`) com `label()` — sem recorrente
+- [ ] Migration `service_categories`: `foreignIdFor(Company::class)->constrained()->restrictOnDelete()`, `name`, `softDeletes()`, índice `(company_id, name)`
+- [ ] Model `HasFactory`, `SoftDeletes`, `#[Fillable]`, `company()`, `services()` + `chaperone()`
+- [ ] `Company::serviceCategories()`
+- [ ] Factory
 
 **Verification:**
-- [x] `php artisan test --compact tests/Feature/CompanyTest.php`
-- [x] `php artisan test` (suite)
+- [ ] Pest em `tests/Feature/Services/ServiceTest.php` (categoria)
 
 **Dependencies:** None
 
 **Files likely touched:**
-- `database/migrations/*_create_companies_table.php`
-- `app/Models/Company.php`
-- `database/factories/CompanyFactory.php`
-- `tests/Feature/CompanyTest.php`
+- `app/Enums/Unit.php`
+- `app/Enums/BillingMode.php`
+- `database/migrations/*_create_service_categories_table.php`
+- `app/Models/ServiceCategory.php`
+- `database/factories/ServiceCategoryFactory.php`
 
 **Estimated scope:** S
 
-## Task 2: users.company_id, phone, is_active
+## Task 2: Service (schema + model + factory)
 
-**Description:** Estender `users` sem editar a migration do kit; factory e relação `belongsTo` Company.
+**Description:** Catálogo de serviços (CAT-01, CAT-03).
 
 **Acceptance criteria:**
-- [x] `Schema::table('users')`: `foreignIdFor(Company::class)->constrained()->restrictOnDelete()`, `phone` nullable, `is_active` boolean default true
-- [x] `User` fillable/casts/`$attributes`/`company()`; factory cria Company
-- [x] Testes de login da Fase 0 continuam passando
+- [ ] Migration `services`: `company_id` restrict, `category_id` nullable `nullOnDelete`, `code`, `name`, `description` nullable, `unit`, `default_price` / `default_cost` `decimal(14,2)`, `billing_mode`, `is_active` default true, `softDeletes()`, unique `(company_id, code)`, índice `(company_id, name)`
+- [ ] Model `HasFactory`, `SoftDeletes`, `#[Fillable]` (sem `company_id`), casts enum/decimal/bool, `$attributes`, `company()`, `category()`, `active()`
+- [ ] `Company::services()`
+- [ ] Factory + state `inactive()`
+- [ ] Unique de código por empresa; mesmo código em empresas distintas ok
 
 **Verification:**
-- [x] `php artisan test --compact`
+- [ ] `php artisan test --compact tests/Feature/Services/ServiceTest.php`
+- [ ] `php artisan test`
 
 **Dependencies:** Task 1
 
 **Files likely touched:**
-- `database/migrations/*_add_company_fields_to_users_table.php`
-- `app/Models/User.php`
-- `database/factories/UserFactory.php`
-- `tests/Feature/CompanyTest.php`
+- `database/migrations/*_create_services_table.php`
+- `app/Models/Service.php`
+- `database/factories/ServiceFactory.php`
+- `app/Models/Company.php`
+- `tests/Feature/Services/ServiceTest.php`
 
-**Estimated scope:** S
+**Estimated scope:** M
 
 ## Checkpoint: Foundation
-- [x] All tests pass
-- [x] Factories não disparam lazy load
+- [ ] All tests pass
+- [ ] Sem lazy load nas relações usadas nos testes (`load` / `with`)
 
-## Task 3: Fortify recusa usuário inativo
+## Task 3: Policies + permissions
 
-**Description:** Login com senha correta e `is_active = false` falha como credencial inválida (AUTH-01).
+**Description:** Matriz §9 para catálogo, incluindo custo interno.
 
 **Acceptance criteria:**
-- [x] `UserFactory::inactive()`
-- [x] Fortify `authenticateUsing` (ou condição extra no attempt) exige `is_active`
-- [x] Resposta igual a senha errada (não revelar que a conta existe)
+- [ ] Permissions `services.view|create|update|delete|view-cost`
+- [ ] Admin: CRUD + `view-cost`; comercial e operação: view; financeiro e gestor: view + `view-cost`
+- [ ] `ServicePolicy` e `ServiceCategoryPolicy` (mesmas permissions); outra empresa: `denyAsNotFound()`
+- [ ] Sem `Policy::before`
+- [ ] `viewCost` na policy do serviço
 
 **Verification:**
-- [x] `php artisan test --compact --filter=inactive`
+- [ ] `php artisan test --compact tests/Feature/Authorization/ServicePolicyTest.php`
 
 **Dependencies:** Task 2
 
 **Files likely touched:**
-- `app/Providers/FortifyServiceProvider.php`
-- `database/factories/UserFactory.php`
-- `tests/Feature/Auth/AuthenticationTest.php`
+- `database/seeders/RolePermissionSeeder.php`
+- `app/Policies/ServicePolicy.php`
+- `app/Policies/ServiceCategoryPolicy.php`
+- `tests/Feature/Authorization/ServicePolicyTest.php`
 
 **Estimated scope:** S
 
-## Task 4: EnsureUserIsActive
+## Task 4: Index de serviços (CAT-01)
 
-**Description:** Sessão já aberta de usuário desativado: logout + invalidar + redirect login. Persistente no Livewire.
+**Description:** Listagem com busca por código/nome; badge ativo/inativo; coluna de custo só com `view-cost`.
 
 **Acceptance criteria:**
-- [x] Middleware no grupo `auth`+`verified` via `web(append:)` / alias, **sem** substituir o stack
-- [x] `Livewire::addPersistentMiddleware([EnsureUserIsActive::class])`
-- [x] Guest não é afetado
+- [ ] `Route::livewire` Index, `#[Title]`, `WithPagination`, `#[Computed]`, `whereAny` + `resetPage()` no filtro, `render()` explícito
+- [ ] Sidebar Serviços com `@can('viewAny', Service::class)`
+- [ ] Custo oculto para comercial/operação
 
 **Verification:**
-- [x] Feature test: `actingAs` inativo no dashboard → guest + redirect login
+- [ ] Pest: busca; inativo com badge; comercial 200 sem custo; sem permissão 403
 
 **Dependencies:** Task 3
 
 **Files likely touched:**
-- `app/Http/Middleware/EnsureUserIsActive.php`
-- `bootstrap/app.php`
-- `app/Providers/AppServiceProvider.php`
-- `tests/Feature/Auth/AuthenticationTest.php`
+- `app/Livewire/Services/Index.php`
+- `resources/views/livewire/services/index.blade.php`
+- `routes/web.php`
+- `resources/views/layouts/app/sidebar.blade.php`
+- `tests/Feature/Services/ServiceIndexTest.php`
 
 **Estimated scope:** M
 
-## Task 5: Spatie Permission + papéis
+## Task 5: Create / Edit serviço (CAT-01, CAT-03)
 
-**Description:** Instalar `spatie/laravel-permission` sem teams; seed dos 5 papéis e permissions `{recurso}.{verbo}`.
+**Description:** Admin cria/edita serviço da mesma company; código unique por empresa; custo só para quem tem `view-cost`.
 
 **Acceptance criteria:**
-- [x] Pacote + migrations publicadas
-- [x] `User` usa `HasRoles`
-- [x] Seeder/teste cria `admin`, `comercial`, `operacao`, `financeiro`, `gestor`
+- [ ] `/services/create` e `/services/{service}/edit`; `company_id` do ator; `$this->authorize()`
+- [ ] Flux form, `wire:submit`, `Rule::unique` em `code`, unidade e `billing_mode` via select nativo, prefixo `R$`
+- [ ] Comercial 403 no create; gestor vê e não grava; foreign 404
+- [ ] Soft delete com `wire:confirm` (admin)
 
 **Verification:**
-- [x] Pest: user `assignRole('comercial')` tem o papel; sem teams config
+- [ ] Pest Livewire create/edit + unique de código + assert no banco
 
-**Dependencies:** Task 2
+**Dependencies:** Task 4
 
 **Files likely touched:**
-- `composer.json` / `composer.lock`
-- `config/permission.php` (se publicado)
-- `database/seeders/RolePermissionSeeder.php`
-- `app/Models/User.php`
-- `tests/Feature/Authorization/RoleTest.php`
+- `app/Livewire/Forms/ServiceForm.php`
+- `app/Livewire/Services/Create.php`
+- `app/Livewire/Services/Edit.php`
+- `resources/views/livewire/services/create.blade.php`
+- `resources/views/livewire/services/edit.blade.php`
+- `resources/views/livewire/services/partials/form.blade.php`
+- `tests/Feature/Services/CreateServiceTest.php`
+- `tests/Feature/Services/EditServiceTest.php`
 
 **Estimated scope:** M
 
-## Task 6: CompanyPolicy + UserPolicy
+## Task 6: Categorias (CAT-02)
 
-**Description:** Autorização por model. Outra empresa = `denyAsNotFound()`. Sem `Policy::before` admin.
+**Description:** Página simples de categorias: criar, listar, excluir (soft delete). Desvincula serviços no delete.
 
 **Acceptance criteria:**
-- [x] Matriz §9: admin CRUD empresa/usuários; gestor leitura; demais deny
-- [x] Policy consulta Spatie + `company_id`
-- [x] Pest `assertForbidden` / 404 por papel
+- [ ] `/service-categories`; só admin cria/exclui; leitura para quem vê o catálogo
+- [ ] Soft delete + `category_id` dos serviços da categoria vai a `null`
+- [ ] Link a partir do Index de serviços
 
 **Verification:**
-- [x] `php artisan test --compact tests/Feature/Authorization`
+- [ ] Pest: admin cria/exclui; comercial 403 no create; serviço fica sem categoria
 
 **Dependencies:** Task 5
 
 **Files likely touched:**
-- `app/Policies/CompanyPolicy.php`
-- `app/Policies/UserPolicy.php`
-- `tests/Feature/Authorization/CompanyPolicyTest.php`
-- `tests/Feature/Authorization/UserPolicyTest.php`
+- `app/Livewire/ServiceCategories/Index.php`
+- `resources/views/livewire/service-categories/index.blade.php`
+- `tests/Feature/Services/ServiceCategoryIndexTest.php`
 
-**Estimated scope:** M
-
-## Task 7: Livewire Company settings (AUTH-04)
-
-**Description:** Admin edita dados da empresa (Flux form, `wire:submit`, `$this->authorize`).
-
-**Acceptance criteria:**
-- [x] `Route::livewire` autenticado+verified; `#[Title]`
-- [x] Campos §8.1; logo disco `public` + `storage:link` depois
-- [x] Gestor vê; comercial 403
-
-**Verification:**
-- [x] `livewire(Edit::class)->actingAs($admin)->...`
-
-**Dependencies:** Task 6
-
-**Files likely touched:**
-- `app/Livewire/Settings/Company.php`
-- `resources/views/livewire/settings/company.blade.php`
-- `routes/settings.php`
-- `tests/Feature/Settings/CompanyUpdateTest.php`
-
-**Estimated scope:** M
-
-## Task 8: Admin cria usuário interno
-
-**Description:** Admin cria usuário da mesma company, já verificado, com papel Spatie. Sem `Registered`.
-
-**Acceptance criteria:**
-- [x] Senha em texto no model (cast `hashed`)
-- [x] `email_verified_at = now()`
-- [x] Inativo não lista como operacional (filtro `active`)
-
-**Verification:**
-- [x] Pest: usuário criado autentica; evento `Registered` não dispara
-
-**Dependencies:** Task 6
-
-**Files likely touched:**
-- `app/Livewire/Users/Index.php` / `Create.php`
-- `resources/views/livewire/users/*.blade.php`
-- `routes/web.php`
-- `tests/Feature/Users/CreateUserTest.php`
-
-**Estimated scope:** M
+**Estimated scope:** S
 
 ## Checkpoint: Complete
-- [x] AUTH-01, AUTH-03, AUTH-04 cobertos por teste
-- [x] Pint + Pest verdes
-- [x] Pronto para review / Fase 2 (clientes)
+- [ ] CAT-01, CAT-02, CAT-03 cobertos por teste; CAT-04 só colunas de tabela
+- [ ] Pint + Larastan + Pest verdes
+- [ ] Pronto para Fase 4 (orçamentos)
