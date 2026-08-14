@@ -4,6 +4,7 @@ namespace App\Livewire\Users;
 
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -36,5 +37,10 @@ class Index extends Component
             ->with('roles')
             ->orderBy('name')
             ->paginate(15);
+    }
+
+    public function render(): View
+    {
+        return view('livewire.users.index');
     }
 }
