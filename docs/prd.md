@@ -212,7 +212,7 @@ Prioridade: **P0** = MVP · **P1** = logo após o MVP · **P2** = evolução.
 | NFR-05 | LGPD | Base legal de cadastro de clientes; exclusão/anonimização sob demanda (admin); sem dado sensível de saúde no MVP. |
 | NFR-06 | Backup | Dump diário do banco (infra); uploads em disco/S3 com retenção. |
 | NFR-07 | Observabilidade | Telescope só local; Horizon + log em staging/prod; healthcheck `/up`; Pulse no P1. |
-| NFR-08 | Acessibilidade / UX | Interface em português, formulários Livewire (`wire:submit`) com validação no servidor, tabelas com filtro, `paginate(15)` e `<flux:pagination>`. |
+| NFR-08 | Acessibilidade / UX | Interface em português, Flux UI 2 + Livewire (`wire:submit`) com validação no servidor, listagens `<flux:table :paginate>` (`paginate(15)`), status em `<flux:badge>`, feedback `Flux::toast`. |
 | NFR-09 | Impressão | PDFs de orçamento e fatura A4, com logo e dados da empresa. |
 | NFR-10 | Qualidade | Pint + Pest no CI; jobs de PDF/e-mail após `afterCommit`. |
 

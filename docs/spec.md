@@ -3,7 +3,7 @@
 Complementa o [`prd.md`](./prd.md). Este documento é a base de implementação Laravel: domínio, dados, estados, permissões, PDFs e ordem de construção.
 
 **Status:** planejamento · **App:** Laravel 13 (`^13.0`) · **PHP:** 8.3–8.5  
-**Docs de referência:** [laravel.com/docs/13.x](https://laravel.com/docs/13.x) (consultado em 14/08/2026)
+**Docs de referência:** [laravel.com/docs/13.x](https://laravel.com/docs/13.x) · [fluxui.dev/docs](https://fluxui.dev/docs) (consultado em 14/08/2026)
 
 ---
 
@@ -17,7 +17,7 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 | PHP | 8.3+ (alvo 8.4/8.5) | piso do Laravel 13; installer oficial instala 8.5 |
 | Banco | PostgreSQL 16 | Laravel 13 suporta PG 10+; JSONB, constraints, `lockForUpdate` ([database](https://laravel.com/docs/13.x/database)) |
 | Cache / fila | Redis; Horizon em staging/prod | filas Redis/database oficiais; `Queue::route` para jobs de PDF ([queues](https://laravel.com/docs/13.x/queues)) |
-| UI interna | **Livewire 4 + Blade + Flux UI 2** (componentes em classe) | starter kit oficial ([starter kits](https://laravel.com/docs/13.x/starter-kits#livewire), [frontend](https://laravel.com/docs/13.x/frontend#livewire)) |
+| UI interna | **Livewire 4 + Blade + Flux UI 2** (componentes em classe) | starter kit oficial ([starter kits](https://laravel.com/docs/13.x/starter-kits#livewire), [Flux](https://fluxui.dev/docs/installation)) |
 | Auth | **Fortify** + Spatie Permission + **Policies** Laravel | kit: login/reset/2FA; autorização por model em `app/Policies` ([authorization](https://laravel.com/docs/13.x/authorization)); **sem** registro público |
 | PDF | `barryvdh/laravel-dompdf` (MVP) | A4 simples; Browsershot se o layout exigir |
 | Storage | `local` em dev; S3-compatível em prod | logo da empresa: disco `public` + `storage:link`; anexos OS/PDF: disco **privado** + download autenticado ([filesystem](https://laravel.com/docs/13.x/filesystem)) |
@@ -93,7 +93,13 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - Método público Livewire sem `$this->authorize()` que muda documento. Qualquer método público é chamável pelo cliente ([security](https://livewire.laravel.com/docs/4.x/security)). Helpers internos: `protected`/`private`.
 - `public $quoteId` / Collection Eloquent de listagem como propriedade. Model: `public Quote $quote` (Livewire trava o id). Listagem: `#[Computed]`. `#[Locked]` se o id for escalar.
 - `wire:model.live` em campos de dinheiro/totais. Default deferred; busca: `.live.debounce`. Sem gravar orçamento no `updated()`.
-- Método/propriedade chamada `upload` (reservado). Paginação `->links()` / tema Bootstrap — UI é `<flux:pagination>`.
+- Método/propriedade chamada `upload` (reservado). Paginação `->links()` / tema Bootstrap — UI é `<flux:table :paginate>` / `<flux:pagination>`.
+- `php artisan flux:publish --all`. Publicar componente só se o kit ainda não cobrir e a customização for permanente ([customization](https://fluxui.dev/docs/customization)).
+- Componentes **Flux Pro** no MVP (`livewire/flux-pro`: editor, chart, kanban, date-picker, file-upload, autocomplete, select `listbox`/`combobox`, command, …). Pacote atual: só `livewire/flux` ^2.13.
+- `mask:dynamic="$money($input)"` em valor BRL — máscara Alpine é formato US. Prefixo `R$` via `<flux:input.group>`.
+- `@if` / `@endif` **dentro** da tag de abertura de componente Flux. Usar `:disabled="$disabled"` ([patterns](https://fluxui.dev/docs/patterns#blade-components-vs-html-elements)).
+- `session()->flash` como UX principal. Sucesso/erro de ação: `Flux::toast` ([toast](https://fluxui.dev/components/toast)).
+- Tirar `@fluxAppearance` do layout (dark mode do kit). Trocar Instrument Sans do kit por Inter sem pedido.
 - Publicar assets Livewire (`livewire:publish --assets`), `inject_assets => false`, endpoint `/livewire/update` custom, bundle manual Alpine — só se o deploy exigir.
 - `app/Exceptions/Handler.php` (Laravel 13 usa `withExceptions` em `bootstrap/app.php`). Mix (assets = **Vite**). MongoDB. Dusk no MVP.
 - Cast `encrypted` em CNPJ, e-mail, número de documento — impede busca/`where`. `encrypted` só para segredo que não se consulta (ex.: token de gateway P1).
@@ -130,7 +136,7 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 10. **Boost** na criação (`laravel new … --boost`) para o Cursor consultar a doc na versão instalada.
 11. **Migrations** anônimas (`return new class extends Migration`), geradas por Artisan. Deploy: `php artisan migrate --force --isolated`. Testes sqlite com `foreign_key_constraints` ligado ([migrations](https://laravel.com/docs/13.x/migrations)).
 12. **Queries** via Eloquent (mesmo query builder). Bindings PDO; **nunca** coluna/`orderBy` vindo do request. Jobs: `lazyById`. Numeração: `lockForUpdate` + `increment` dentro de `DB::transaction` ([queries](https://laravel.com/docs/13.x/queries)).
-13. **Paginação** `paginate(15)` (`LengthAwarePaginator`) nas listagens Livewire + `<flux:pagination>`. Tailwind default do kit; **não** Bootstrap. `cursorPaginate` fora do MVP ([pagination](https://laravel.com/docs/13.x/pagination)).
+13. **Paginação** `paginate(15)` (`LengthAwarePaginator`) nas listagens Livewire + `<flux:table :paginate>` / `<flux:pagination>`. Tailwind default do kit; **não** Bootstrap. `cursorPaginate` fora do MVP ([pagination](https://laravel.com/docs/13.x/pagination), [Flux table](https://fluxui.dev/components/table)).
 14. **Collections** Eloquent no agregado já carregado (`$quote->items`). Filtro de listagem é SQL, não `Model::all()->reject()`. `toQuery()->update()` **não** muda status de documento ([eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections)).
 15. **Auth** Fortify + guard `web` (session) + Eloquent `User`. Usuário logado via `Auth::user()` / `auth()->user()` / `$request->user()`. Painel: `auth` + `verified`. Sem HTTP Basic, Socialite ou guard extra ([authentication](https://laravel.com/docs/13.x/authentication)).
 16. **Autorização** por **policy** no model (`viewAny`, `view`, `create`, `update`, `delete` + verbos de domínio: `send`, `issue`, `registerPayment`). Spatie guarda papel/permission; a policy decide. Outra empresa: `Response::denyAsNotFound()`. Sem `Gate::before` de admin ([authorization](https://laravel.com/docs/13.x/authorization)).
@@ -148,6 +154,7 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 28. **Filesystem / erros / log / cache** — PDF e anexos no disco privado; logo no `public` + `storage:link`. Exceções em `withExceptions`. Log `stack`. Cache local `database` / prod `redis`. Sem `Handler.php` ([filesystem](https://laravel.com/docs/13.x/filesystem), [errors](https://laravel.com/docs/13.x/errors), [logging](https://laravel.com/docs/13.x/logging), [cache](https://laravel.com/docs/13.x/cache)).
 29. **Encryption + casts** — `APP_KEY`; rotação com `APP_PREVIOUS_KEYS`. Casts no método `casts()`: `hashed`, `decimal:n`, enum, `immutable_*`, JSON `array`. Sem `encrypted` em campo pesquisável ([encryption](https://laravel.com/docs/13.x/encryption), [eloquent-mutators](https://laravel.com/docs/13.x/eloquent-mutators)).
 30. **Testes HTTP** Pest Feature + `RefreshDatabase` + sqlite `:memory:`. `actingAs`, `livewire()`, `Queue::fake` / `Notification::fake`. Sem Dusk no MVP ([http-tests](https://laravel.com/docs/13.x/http-tests), [database-testing](https://laravel.com/docs/13.x/database-testing)).
+31. **Flux UI 2** — componentes Blade do kit (`livewire/flux` v2.16). Shorthand (`label` no input); espaçamento nosso (`space-y-6`); listagem `<flux:table :paginate>`; status `<flux:badge>`; submit `variant="primary"`; toast persistido no layout. Sem Pro no MVP ([Flux docs](https://fluxui.dev/docs)).
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
@@ -229,7 +236,7 @@ Eloquent, não `DB::table()`, nas tabelas de domínio. O builder usa PDO — bin
 |---|---|
 | Listagens Livewire | `when($this->status, …)`, busca `whereAny([...], 'like', …)` ou `whereLike` (case-insensitive). `orWhere` sempre agrupado em closure. |
 | Sort | allowlist (`number`, `valid_until`, `total`, `created_at`). Default `latest()`. |
-| Paginação | `paginate(15)` → `LengthAwarePaginator` (total + números de página, NFR-08). UI: `<flux:pagination :paginator="$quotes" />`. Livewire: `WithPagination`; `$this->resetPage()` ao mudar filtro. Dois paginators na mesma tela: `pageName:` distinto. `withQueryString()` só se a listagem for request HTTP clássico (não é o caso Livewire). `simplePaginate` / `cursorPaginate` só se o `COUNT` do `paginate` estourar NFR-02 — cursor exige `orderBy` em coluna única, sem `null`. Sem JSON de paginator (API fora do MVP). |
+| Paginação | `paginate(15)` → `LengthAwarePaginator` (total + números de página, NFR-08). UI: `<flux:table :paginate="$quotes">` ou `<flux:pagination :paginator="$quotes" />`. Livewire: `WithPagination`; `$this->resetPage()` ao mudar filtro. Dois paginators na mesma tela: `pageName:` distinto. `withQueryString()` só se a listagem for request HTTP clássico (não é o caso Livewire). `simplePaginate` / `cursorPaginate` só se o `COUNT` do `paginate` estourar NFR-02 — cursor exige `orderBy` em coluna única, sem `null`. Sem JSON de paginator (API fora do MVP). |
 | Relação | `whereBelongsTo($customer)`; `whereIn('customer_id', Customer::query()->whereLike('name', …)->select('id'))` em vez de `whereHas` pesado. |
 | JSON endereço | gravar o objeto inteiro. `where('address_json->city', $city)` só se houver filtro de cidade. |
 | Dashboard REL-01..03 | **um** `selectRaw` com `count(case when …)` + bindings + `toBase()`. Não N `count()`. |
@@ -258,9 +265,9 @@ Kit: Livewire `^4.1`, Tailwind, [Flux UI 2](https://fluxui.dev/), Blaze. Código
 | Binding | Default deferred. Busca: `wire:model.live.debounce.300ms`. Sem `.live` em preço/qtd. Sem `updated()` gravando documento. |
 | Ações | `wire:click="send"` / `delete(Quote $quote)` (implicit binding). Parâmetro = input não confiável → `$this->authorize()`. Método que não é ação HTTP: `protected`. Confirmar destrutivo: `wire:confirm`. |
 | Redirect | `$this->redirect(route('quotes.index'), navigate: true)`. Kit já usa `wire:navigate` no sidebar. |
-| Paginação | `WithPagination` + `paginate(15)` + `<flux:pagination :paginator="$this->quotes" />`. `resetPage()` ao filtrar. Dois paginators: `pageName:`. Sem `->links()`, sem Bootstrap, sem `WithoutUrlPagination` nas listagens (URL `?page=` é desejável). |
+| Paginação | `WithPagination` + `paginate(15)` + `<flux:table :paginate="$this->quotes">` (ou `<flux:pagination :paginator="$this->quotes" />` se a tabela for outra). `resetPage()` ao filtrar. Dois paginators: `pageName:`. Sem `->links()`, sem Bootstrap, sem `WithoutUrlPagination` nas listagens (URL `?page=` é desejável). `pagination:scroll-to` / `scroll-to="#quotes"` se a lista for longa ([pagination](https://fluxui.dev/components/pagination), [table](https://fluxui.dev/components/table)). |
 | Upload | `WithFileUploads` + `wire:model="files"`. Validar mime + `max:10240` (10 MB, NFR). `store()` no disco. Preview imagem: `temporaryUrl()`. Nome de método **não** `upload`. S3 direto só em prod se configurarmos `LIVEWIRE_TEMPORARY_FILE_UPLOAD_DISK`. |
-| Loading | `wire:loading` / `data-loading:` no submit. Flux toast no sucesso (`Flux::toast`), como o perfil do kit. |
+| Loading | `wire:loading` / `data-loading:` no submit. `<flux:button type="submit" variant="primary">` já mostra spinner (desligar só com `:loading="false"`). Toast: `Flux::toast(...)` ([toast](https://fluxui.dev/components/toast)). |
 | Teste | Pest: `livewire(Index::class)->set(...)->call('send')->assertHasNoErrors()` / `assertForbidden()`. Upload: `UploadedFile::fake()`. |
 | Assets | Zero-config: não desligar `inject_assets`, não publicar JS, não `setUpdateRoute`. Alpine vem com o Livewire. |
 | Persistência de middleware | `auth` / `can` / `verified` já são persistentes. Fase 1: `Livewire::addPersistentMiddleware([EnsureUserIsActive::class])` no `AppServiceProvider` **além** de aplicar na rota. |
@@ -540,6 +547,68 @@ Pint já vem com `pint.json` do starter kit (preset Laravel).
 | Sanctum | P1 (`install:api`). |
 | Cashier, Passport, Socialite, Scout, Octane, Folio, Mix, Homestead, Nova, Valet, Envoy, Pennant, Precognition, Prompts, Head | Fora (Herd/Valet ok na máquina do José; o repo padroniza Sail). |
 
+### 1.6 Mapa da documentação Flux UI 2
+
+Índice: [fluxui.dev/docs](https://fluxui.dev/docs) (14/08/2026). Pacote no repo: `livewire/flux` **v2.16.0** (free). **Sem** `livewire/flux-pro` no MVP — Pro exige `php artisan flux:activate` + `auth.json` (não versionar) e secrets `FLUX_USERNAME` / `FLUX_LICENSE_KEY` no CI ([installation](https://fluxui.dev/docs/installation)).
+
+Kit já liga o que a doc pede: `@fluxAppearance` em `partials/head.blade.php`, `@fluxScripts` no layout, `@import '../../vendor/livewire/flux/dist/flux.css'` + `@custom-variant dark` em `app.css`, toast persistido (`@persist('toast')` + `<flux:toast.group>`).
+
+**Guias**
+
+| Página | Uso |
+|---|---|
+| [Installation](https://fluxui.dev/docs/installation) | Alinhado — vem no starter kit Livewire. Sem `composer require livewire/flux` de novo. Nginx `/flux/*.js\|css` só se o proxy custom 404. |
+| [Upgrade](https://fluxui.dev/docs/upgrading) | App já na v2 (`@fluxAppearance`, não `@fluxStyles`). |
+| [Principles](https://fluxui.dev/docs/principles) | Shorthand no caso comum; compor `field`/`label`/`error` só quando o layout exigir. **We style, you space:** padding do Flux, `margin`/`space-y-*` nosso. |
+| [Patterns](https://fluxui.dev/docs/patterns) | `variant` / `icon` / `size` / `kbd`. `wire:model` nos controles. Atributo extra vai para o HTML. Conflito de classe: preferir variante/compor, não `!` em todo lugar. Sem `@if` na tag de abertura. |
+| [Theming](https://fluxui.dev/docs/theming) | Manter o tema do kit (`zinc` + accent em `app.css`). Sem theme builder no MVP. |
+| [Dark mode](https://fluxui.dev/docs/dark-mode) | `@fluxAppearance` + tela Configurações já usa `x-model="$flux.appearance"` (light/dark/system). Não remover a diretiva. |
+| [Customization](https://fluxui.dev/docs/customization) | Classe Tailwind pontual (`class="w-full"` / `max-w-md`). Publicar Blade só de um componente. Já publicados pelo kit: `resources/views/flux/navlist/group.blade.php` e alguns ícones — não republicar `--all`. |
+| [Help](https://fluxui.dev/docs/help) | Fora do produto. |
+
+**Layouts**
+
+| Página | Uso |
+|---|---|
+| [Sidebar](https://fluxui.dev/layouts/sidebar) | Alinhado — `layouts/app/sidebar.blade.php`: `sticky collapsible="mobile"`. Itens: `icon` + `:href="route(…)"` + `:current="request()->routeIs(…)"` + `wire:navigate`. Conteúdo em `<flux:main>`. |
+| Header (layout header do kit) | Só o header **mobile** (`lg:hidden`) + menu do usuário. Não trocar o painel para navbar-first. |
+
+Nav do MVP (quando as rotas existirem), grupos:
+
+- Plataforma: Dashboard
+- Cadastros: Clientes, Serviços
+- Comercial: Orçamentos
+- Operação: Ordens de serviço
+- Financeiro: Faturas
+- Rodapé: Configurações (já no menu do usuário)
+
+**Componentes free (no vendor `livewire/flux`) — usar estes**
+
+| Componente | Uso neste ERP |
+|---|---|
+| [Button](https://fluxui.dev/components/button) | Submit: `variant="primary" type="submit"`. Destrutivo: `danger`. Secundário: default/ghost. `href` + `wire:navigate` em link. Loading automático no submit. |
+| [Input](https://fluxui.dev/components/input) / [Textarea](https://fluxui.dev/components/textarea) / [Field](https://fluxui.dev/components/field) | `<flux:input wire:model="email" :label="__('Email')" />`. Arquivo: `type="file"` (+ `multiple`). Data: `type="date"` (não date-picker Pro). Senha: `viewable`. Busca: `icon="magnifying-glass"` + `wire:model.live.debounce.300ms`. Dinheiro: `<flux:input.group>` + prefixo `R$` + `input:class="text-end font-mono"`. |
+| [Select](https://fluxui.dev/components/select) | Native (`<flux:select>` + `select.option`). **Não** `variant="listbox"` / `combobox` (Pro). Cliente em lista grande: busca Livewire, não `<select>` de 50k. |
+| [Checkbox](https://fluxui.dev/components/checkbox) / [Radio](https://fluxui.dev/components/radio) / [Switch](https://fluxui.dev/components/switch) | Filtros, flags (`is_active`), aparência (já no kit). |
+| [Table](https://fluxui.dev/components/table) + [Pagination](https://fluxui.dev/components/pagination) | Listagens: `<flux:table :paginate="$this->quotes">` + `table.column sortable` com `orderBy` **allowlist**. `:key="$quote->id"` na row. Valor: `table.cell variant="strong"`. |
+| [Badge](https://fluxui.dev/components/badge) | Status do documento (`size="sm"`). Cores em §6 (enums). |
+| [Modal](https://fluxui.dev/components/modal) | Motivo obrigatório / formulário curto. Nome único no loop (`'cancel-quote-'.$quote->id`). `Flux::modal('…')->show()` / `$this->modal()`. `wire:model.self` se binding. Confirmação simples sem campo extra: `wire:confirm` no botão. |
+| [Toast](https://fluxui.dev/components/toast) | Já no layout. `Flux::toast(heading:, text:, variant: 'success'\|'warning'\|'danger')`. Documento criado: `link` com `navigate => true`. Duration default 5s. |
+| [Dropdown](https://fluxui.dev/components/dropdown) / menu | Ações da linha (⋯): ver / editar / PDF. Itens com `@can`. |
+| [Heading](https://fluxui.dev/components/heading) / [Text](https://fluxui.dev/components/text) / [Callout](https://fluxui.dev/components/callout) / [Card](https://fluxui.dev/components/card) | Título da página `heading size="xl" level="1"`. Callout para aviso (orçamento expirado, fatura vencida) — não toast permanente. |
+| [Avatar](https://fluxui.dev/components/avatar) / [Profile](https://fluxui.dev/components/profile) / [Brand](https://fluxui.dev/components/brand) | Kit (usuário). Logo da empresa: disco `public` no brand quando houver `Company`. |
+| [Breadcrumbs](https://fluxui.dev/components/breadcrumbs) | Show/edit: Início / Orçamentos / `ORC-…`. |
+| [Tabs](https://fluxui.dev/components/tabs) | Show da OS (itens / apontamentos / anexos) se a tela pedir. |
+| [OTP](https://fluxui.dev/components/otp) | 2FA do kit. Não reimplementar. |
+| [Icon](https://fluxui.dev/components/icon) | Heroicons via `icon="…"`. Sem SVG solto se o ícone existir. |
+| Skeleton / Separator / Tooltip / Progress / Navbar / Navlist | Kit + loading pontual. Sem reinventar sidebar com navbar. |
+
+**Pro — fora do MVP** (comprar licença = P1 explícito)
+
+[File upload](https://fluxui.dev/components/file-upload), [Editor](https://fluxui.dev/components/editor), [Chart](https://fluxui.dev/components/chart), [Date picker](https://fluxui.dev/components/date-picker), [Autocomplete](https://fluxui.dev/components/autocomplete), select listbox/combobox, Kanban, Command, Calendar, Carousel, Color picker, Composer, Context, Pillbox, Time picker, Timeline, Accordion, Slider, Popover.
+
+Anexos da OS no MVP: `<flux:input type="file" wire:model="files" multiple>` + `WithFileUploads` (NFR: `mimes` + `max:10240`). Dashboard: cards/contagens, não `flux:chart`. Observações de orçamento: `flux:textarea`, não editor rico.
+
 ---
 
 ## 2. Estrutura do repositório (alvo)
@@ -582,6 +651,7 @@ routes/console.php
 docs/prd.md
 docs/spec.md
 config/livewire.php          # make_command.type = class
+resources/views/flux/        # só o que o kit já publicou (não --all)
 tests/Feature/
 tests/Unit/
 ```
@@ -754,6 +824,18 @@ enum PaymentMethod: string {
 ```
 
 Nos models, declarar casts no método `casts()` (Laravel 13): enums acima, valores `decimal:2`, quantidades `decimal:4`, datas de negócio `immutable_date` / `immutable_datetime`. JSON de endereço: `array` ou `AsArrayObject`.
+
+UI: `<flux:badge size="sm" :color="$status->color()">`. Método `color(): string` no enum (não if/else na view):
+
+| Status | `color` Flux |
+|---|---|
+| rascunho (quote/invoice) | `zinc` |
+| enviado / emitida / aberta | `sky` |
+| aprovado / paga / concluida | `green` |
+| em_execucao / parcialmente_paga | `amber` |
+| pausada / expirado / vencida | `orange` |
+| recusado | `red` |
+| cancelado(a) | `zinc` |
 
 ---
 
@@ -1186,7 +1268,7 @@ Rotas autenticadas em `routes/web.php` (`auth`, `verified`). Componentes em clas
 | `Livewire\Settings\...` | `routes/settings.php` | `profile.edit`, `security.edit`, `appearance.edit` |
 | `dashboard` (view) | `/dashboard` | `dashboard` |
 
-Layout sidebar Flux (`resources/views/layouts/app.blade.php`). `#[Title]` em cada página. Listagens: `WithPagination`, `#[Computed]` para a query, `when()` + `whereLike`/`whereAny` + `paginate(15)`, `orderBy` só com coluna na allowlist, `resetPage()` no filtro, `<flux:pagination :paginator="$this->items" />`, `wire:key` no `@foreach`. Forms: `wire:submit` + `$this->validate()`. Ações de status: `$this->authorize()` **depois** `QuoteService` + `DB::transaction`. Botões com `@can` **e** authorize na ação (método público é chamável). Links internos: `wire:navigate`. Redirect: `navigate: true`. Testes: `livewire(...)` + `actingAs`. Assert no **banco** e `assertForbidden()` por papel. View: um elemento raiz.
+Layout sidebar Flux (`resources/views/layouts/app.blade.php` → `layouts/app/sidebar.blade.php`). `#[Title]` em cada página. Página: `<flux:heading size="xl" level="1">` + breadcrumbs. Listagens: `WithPagination`, `#[Computed]` para a query, `when()` + `whereLike`/`whereAny` + `paginate(15)`, `orderBy` só com coluna na allowlist, `resetPage()` no filtro, `<flux:table :paginate="$this->items">` com `table.column sortable` e `table.row :key`, status em `<flux:badge>`. Forms: `wire:submit` + `$this->validate()` + `<flux:input … label>` (shorthand). Dinheiro: grupo `R$`. Data: `type="date"`. Submit: `<flux:button variant="primary" type="submit">`. Sucesso: `Flux::toast`. Destrutivo com motivo: `<flux:modal>`; sem motivo: `wire:confirm`. Ações de status: `$this->authorize()` **depois** `QuoteService` + `DB::transaction`. Botões com `@can` **e** authorize na ação (método público é chamável). Links internos: `wire:navigate`. Redirect: `navigate: true`. Testes: `livewire(...)` + `actingAs`. Assert no **banco** e `assertForbidden()` por papel. View: um elemento raiz. Convenções Flux: §1.6.
 
 ---
 
