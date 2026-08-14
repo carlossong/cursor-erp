@@ -2,75 +2,108 @@
 
 Complementa o [`prd.md`](./prd.md). Este documento é a base de implementação Laravel: domínio, dados, estados, permissões, PDFs e ordem de construção.
 
-**Status:** planejamento · **App:** Laravel 12 · **PHP:** 8.3+
+**Status:** planejamento · **App:** Laravel 13 (`^13.0`) · **PHP:** 8.3–8.5  
+**Docs de referência:** [laravel.com/docs/13.x](https://laravel.com/docs/13.x) (consultado em 14/08/2026)
 
 ---
 
 ## 1. Decisões de arquitetura
 
-| Tema | Decisão | Motivo |
+Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12 saiu de bugfixes em **13/08/2026** e segue só com patches de segurança até 24/02/2027 — projeto novo sobe direto na 13.
+
+| Tema | Decisão | Motivo / fonte |
 |---|---|---|
-| Framework | Laravel 12 | padrão do time, ecossistema maduro para ERP |
-| PHP | 8.3+ | enums, readonly, typed properties |
-| Banco | PostgreSQL 16 | JSONB, constraints, sequências, bom para financeiro |
-| Cache / fila | Redis + queue `database` no local; Redis+Horizon em staging/prod | jobs de expiração, e-mail, PDF |
-| UI interna | **Filament 4** (Livewire 3) | CRUD, filtros, policies e PDFs rápidos para operação interna |
-| Auth | Filament auth + `spatie/laravel-permission` | papéis do PRD sem reinventar |
-| PDF | `barryvdh/laravel-dompdf` (MVP) | A4 simples; trocar para Browsershot se o layout exigir |
-| Storage | `local` em dev; S3-compatível em prod | anexos de OS e comprovantes |
+| Framework | Laravel 13 (`^13.0`) | versão atual; breaking changes mínimos; PHP ≥ 8.3 ([releases](https://laravel.com/docs/13.x/releases)) |
+| PHP | 8.3+ (alvo 8.4/8.5) | piso do Laravel 13; installer oficial instala 8.5 |
+| Banco | PostgreSQL 16 | Laravel 13 suporta PG 10+; JSONB, constraints, `lockForUpdate` ([database](https://laravel.com/docs/13.x/database)) |
+| Cache / fila | Redis; Horizon em staging/prod | filas Redis/database oficiais; `Queue::route` para jobs de PDF ([queues](https://laravel.com/docs/13.x/queues)) |
+| UI interna | **Filament 5** (`^5.0`) + Livewire 4 + Tailwind 4.1+ | painel `/admin`; v5 é o atual para app novo ([install Filament 5](https://filamentphp.com/docs/5.x/introduction/installation)) |
+| Auth | sessão do painel Filament + Spatie Permission + **Policies** Laravel | authorization por policy, não por if solto ([authorization](https://laravel.com/docs/13.x/authorization)) |
+| PDF | `barryvdh/laravel-dompdf` (MVP) | A4 simples; Browsershot se o layout exigir |
+| Storage | `local` em dev; S3-compatível em prod | `php artisan storage:link` para anexos públicos |
 | Front público | nenhum no MVP | link de aprovação = P1 |
-| API | JSON interna mínima (Livewire cobre o MVP). Reservar `routes/api.php` versionada `/api/v1` para P1 |
-| Multitenancy | **não** no MVP. Toda tabela de negócio tem `company_id` (sempre `1` no seed) | evita retrabalho na P2 |
-| Idioma | `pt_BR`, `APP_TIMEZONE=America/Sao_Paulo`, `APP_CURRENCY=BRL` | |
-| Testes | Pest 3 + Laravel | feature tests por fluxo crítico |
+| API HTTP | **não** no MVP | P1: `php artisan install:api` (Sanctum) + JSON:API resources nativos do Laravel 13 |
+| Multitenancy | **não** no MVP. Toda tabela de negócio tem `company_id` (seed = `1`) | evita retrabalho na P2 |
+| Idioma | `APP_LOCALE=pt_BR`, `APP_FAKER_LOCALE=pt_BR`, `APP_TIMEZONE=America/Sao_Paulo` | [configuration](https://laravel.com/docs/13.x/configuration) / [installation](https://laravel.com/docs/13.x/installation) |
+| Testes | **Pest 4** (PHPUnit 12 por baixo) | default do `laravel new`; a maioria dos testes é Feature ([testing](https://laravel.com/docs/13.x/testing)) |
+| Qualidade | Laravel Pint | formatter oficial |
+| DX / agentes | Laravel Boost (`--dev`) | MCP + guidelines versionadas para Cursor ([AI](https://laravel.com/docs/13.x/ai)) |
+| Dev local | `laravel new` + `composer run dev` | sobe HTTP, queue worker e Vite; default do installer é SQLite — trocamos para pgsql |
 
 ### 1.1 O que não usar no MVP
 
-- Inertia/Vue/React (custo alto para um backoffice).
+- Starter kits Inertia/Vue/React/Svelte (custo alto para backoffice interno). Livewire starter kit também não: o painel é Filament.
+- Laravel AI SDK, embeddings, `whereVectorSimilarTo` / pgvector — úteis depois (busca de catálogo), irrelevantes para o fluxo financeiro.
 - Microserviços, DDD tático pesado, event sourcing.
 - Soft delete em **documentos numerados** (orçamento/OS/fatura): usar status `cancelado`. Soft delete só em cadastros (cliente, serviço) se fizer sentido.
-- Money como `float`. Usar **inteiro em centavos** (`bigint`) ou `decimal(14,2)` — decisão: **`decimal(14,2)`** para valores e `decimal(14,4)` para quantidade. Cálculos sempre no backend com `bcmul`/`bcadd` ou `Brick\Money` se a complexidade crescer. MVP: `decimal` + arredondamento `ROUND_HALF_UP` em 2 casas no total.
+- Money como `float`. Decisão: **`decimal(14,2)`** nos valores e `decimal(14,4)` na quantidade; no Eloquent, cast `decimal:2` / `decimal:4` ([mutators](https://laravel.com/docs/13.x/eloquent-mutators#attribute-casting)). Totais no backend com `ROUND_HALF_UP`. `Brick\Money` só se a complexidade crescer.
+- `routes/api.php` até o P1 (`install:api`). CSRF no painel continua o default; Laravel 13 formalizou `PreventRequestForgery` (compatível com token CSRF).
 
 ### 1.2 Diagrama de contexto
 
 ```mermaid
 flowchart TB
-  U[Usuários internos] --> F[Filament / Laravel]
-  F --> DB[(PostgreSQL)]
+  U[Usuários internos] --> F[Filament 5 / Laravel 13]
+  F --> DB[(PostgreSQL 16)]
   F --> R[(Redis)]
   F --> S[Storage anexos]
   F --> PDF[Dompdf]
-  J[Scheduler + Queue] --> F
+  J[Schedule em routes/console.php + Queue] --> F
 ```
+
+### 1.3 Convenções Laravel 13 que esta spec segue
+
+Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
+
+1. **Criar o app** com `laravel new cursor-erp` (installer atualizado). Escolher **Pest** e **PostgreSQL**. Não usar o SQLite default em ambiente de time.
+2. **Dev:** `composer run dev` (HTTP + queue + Vite). Painel em `/admin`.
+3. **Bootstrap:** `bootstrap/app.php` + `bootstrap/providers.php`. O Filament registra `App\Providers\Filament\AdminPanelProvider` aí — se o `/admin` 404, conferir esse arquivo.
+4. **Schedule** em `routes/console.php` (`Schedule::job(...)->dailyAt('01:00')`), não em `app/Console/Kernel.php` (não existe mais no skeleton).
+5. **Jobs** com atributos PHP 8 do framework: `#[Tries(5)]`, `#[Backoff(60)]`, `#[Timeout(120)]`. Roteamento central: `Queue::route(GenerateDocumentPdfJob::class, connection: 'redis', queue: 'pdfs')`.
+6. **Policies** geradas com `php artisan make:policy`; Filament consulta `canViewAny` / `canUpdate` etc.
+7. **Enums** backed string + cast Eloquent (`QuoteStatus::class`). Datas de negócio: `immutable_date` / `immutable_datetime`.
+8. **Testes:** a maioria em `tests/Feature` (a doc recomenda Feature, não Unit, para confiança de fluxo). Rodar `php artisan test`. Paralelo depois, com `brianium/paratest`.
+9. **Boost** na Fase 0 (`composer require laravel/boost --dev && php artisan boost:install`) para o Cursor consultar a doc na versão instalada, não uma 12.x antiga.
 
 ---
 
 ## 2. Estrutura do repositório (alvo)
 
+Estrutura padrão do Laravel 13 + pastas de domínio. Laravel **não** exige onde a classe mora, desde que o Composer autoloade ([structure](https://laravel.com/docs/13.x/structure)); abaixo é a convenção deste projeto.
+
 ```
+bootstrap/
+  app.php
+  providers.php
 app/
   Enums/
   Models/
   Policies/
   Observers/
-  Services/          # regras de conversão e totais
+  Services/            # regras de conversão e totais (não HTTP)
     QuoteService.php
     WorkOrderService.php
     InvoiceService.php
     NumberGenerator.php
     Money.php
-  Pdf/
   Jobs/
-  Support/
+  Providers/
+    AppServiceProvider.php
+    Filament/AdminPanelProvider.php
+  Filament/            # Resources, Pages, Widgets (gerado pelo Filament)
 database/migrations/
+database/factories/
 database/seeders/
 resources/views/pdf/
+routes/web.php
+routes/console.php     # schedule + comandos closure
 docs/prd.md
 docs/spec.md
 tests/Feature/
+tests/Unit/
 ```
 
-Módulos lógicos (não obrigatório `nwidart/laravel-modules` no MVP): Cadastros, Orçamentos, OS, Financeiro, Relatórios.
+Módulos lógicos (não usar `nwidart/laravel-modules` no MVP): Cadastros, Orçamentos, OS, Financeiro, Relatórios.
 
 ---
 
@@ -110,6 +143,7 @@ erDiagram
 
 ```php
 enum PersonType: string { case PF = 'pf'; case PJ = 'pj'; }
+
 
 enum QuoteStatus: string {
     case Draft = 'rascunho';
@@ -159,6 +193,8 @@ enum PaymentMethod: string {
     case Other = 'outros';
 }
 ```
+
+Nos models, declarar casts no método `casts()` (Laravel 13): enums acima, valores `decimal:2`, quantidades `decimal:4`, datas de negócio `immutable_date` / `immutable_datetime`. JSON de endereço: `array` ou `AsArrayObject`.
 
 ---
 
@@ -469,13 +505,35 @@ Idempotência: `convert` e `createFromWorkOrder` usam transação e checam `conv
 
 ## 11. Jobs e scheduler
 
-| Job / comando | Quando | Ação |
+Schedule em `routes/console.php` ([scheduling](https://laravel.com/docs/13.x/scheduling)):
+
+```php
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::job(new ExpireQuotesJob)->dailyAt('01:00')->timezone('America/Sao_Paulo')->withoutOverlapping();
+Schedule::job(new MarkOverdueInvoicesJob)->dailyAt('01:10')->timezone('America/Sao_Paulo')->withoutOverlapping();
+```
+
+| Job | Quando | Ação |
 |---|---|---|
 | `ExpireQuotesJob` | diário 01:00 | `enviado` + `valid_until < today` → `expirado` |
 | `MarkOverdueInvoicesJob` | diário 01:10 | parcelas em aberto com `due_date < today` → `vencida`; fatura idem se saldo > 0 |
-| `GenerateDocumentPdfJob` | na fila ao enviar/emitir | gera e grava path no model (`pdf_path`) |
+| `GenerateDocumentPdfJob` | na fila ao enviar/emitir | gera e grava `pdf_path` |
 
-`pdf_path` em `quotes` e `invoices`. Regenerar só em rascunho.
+Jobs de PDF usam atributos do Laravel 13 e roteamento central em `AppServiceProvider`:
+
+```php
+#[Tries(5)]
+#[Backoff(60)]
+#[Timeout(120)]
+class GenerateDocumentPdfJob implements ShouldQueue { /* ... */ }
+
+Queue::route(GenerateDocumentPdfJob::class, connection: 'redis', queue: 'pdfs');
+```
+
+`ShouldBeUnique` no PDF por `document_type + id` para não gerar duas vezes o mesmo arquivo. Falhas vão para `failed_jobs`; Horizon em staging/prod.
+
+`pdf_path` em `quotes` e `invoices`. Regenerar só em rascunho. Local: `composer run dev` já sobe o worker.
 
 ---
 
@@ -489,7 +547,17 @@ Fatura: idem + vencimento/parcelas + PIX/dados bancários. **Não** usar a palav
 
 ---
 
-## 13. Filament — recursos (MVP)
+## 13. Filament 5 — recursos (MVP)
+
+Instalação (Fase 0), na raiz do Laravel 13:
+
+```bash
+composer require filament/filament:"^5.0"
+php artisan filament:install --panels
+php artisan make:filament-user
+```
+
+Painel `admin` em `/admin`. Conferir `bootstrap/providers.php`. Filament 5 exige Livewire 4 e Tailwind 4.1+; o panel builder já empacota isso — não misturar starter kit Livewire por cima.
 
 | Resource | Pages |
 |---|---|
@@ -503,7 +571,7 @@ Fatura: idem + vencimento/parcelas + PIX/dados bancários. **Não** usar a palav
 | Company settings | página única |
 | Dashboard | widgets: KPIs do REL-01 a REL-03 |
 
-Filtros globais: período, status, cliente. Pesquisa global Filament: número de documento, nome, tax_id.
+Filtros globais: período, status, cliente. Pesquisa global Filament: número de documento, nome, tax_id. Ações de status chamam os *services*, não `update()` direto. Testes de Resource: `livewire(ListQuotes::class)` + Pest, com usuário autenticado via `actingAs` + papel Spatie.
 
 ---
 
@@ -518,7 +586,11 @@ Filtros globais: período, status, cliente. Pesquisa global Filament: número de
 
 ---
 
-## 15. Testes (Pest) — mínimo para o MVP
+## 15. Testes (Pest 4) — mínimo para o MVP
+
+A doc do Laravel 13 pede **Feature tests** para fluxos ([testing](https://laravel.com/docs/13.x/testing)). Unit só para `Money` / arredondamento puro, sem boot da app (`tests/Unit` **não** acessa banco).
+
+Rodar: `php artisan test` (ou `./vendor/bin/pest`). Paralelo depois: `composer require brianium/paratest --dev` + `php artisan test --parallel`. Jobs: `Queue::fake()` / `Bus::fake()`. Schedule: `Schedule::fake()` se precisar. Ambiente: `phpunit.xml` já força `APP_ENV=testing`; opcional `.env.testing`.
 
 | Arquivo | Cobre |
 |---|---|
@@ -533,7 +605,7 @@ Filtros globais: período, status, cliente. Pesquisa global Filament: número de
 | `NumberGeneratorTest` | concorrência (2 next na mesma transação simulada) |
 | `PermissionTest` | comercial não emite fatura; financeiro não edita catálogo |
 
-Factories para Company, User, Customer, Service, Quote.
+Factories (`php artisan make:factory`) para Company, User, Customer, Service, Quote. Seed de papéis nos testes via seeder mínimo ou `beforeEach`.
 
 ---
 
@@ -548,19 +620,26 @@ Factories para Company, User, Customer, Service, Quote.
 
 ## 17. Configuração e ambiente
 
-`.env` relevante:
+O installer grava SQLite por default. Este projeto **não** usa SQLite fora de teste opcional — Postgres desde o dia zero.
+
+`.env` relevante ([installation](https://laravel.com/docs/13.x/installation#databases-and-migrations)):
 
 ```
+APP_NAME="Cursor ERP"
 APP_LOCALE=pt_BR
 APP_FALLBACK_LOCALE=pt_BR
 APP_FAKER_LOCALE=pt_BR
 APP_TIMEZONE=America/Sao_Paulo
 DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=cursor_erp
 QUEUE_CONNECTION=redis
+CACHE_STORE=redis
 FILESYSTEM_DISK=local
 ```
 
-`config/erp.php`: prefixos de documento, validade padrão, teto de desconto (overridável pela company).
+`config/erp.php`: prefixos de documento, validade padrão, teto de desconto (overridável pela company). Não commitar `.env`; cada ambiente tem o seu.
 
 ---
 
@@ -570,7 +649,7 @@ Ordem rígida — cada fase mergeável e testável.
 
 | Fase | Entrega | Critério de pronto |
 |---|---|---|
-| **0** | Scaffold Laravel 12 + Filament 4 + Pest + Permission + Postgres | login admin, painel vazio |
+| **0** | `laravel new` (Laravel 13, Pest, Postgres) + Filament 5 + Pint + Boost + Spatie Permission | login `/admin`, painel vazio, `php artisan test` verde |
 | **1** | Company, users, roles, settings | AUTH-* |
 | **2** | Clientes + contatos | CLI-* |
 | **3** | Categorias e serviços | CAT-* |
@@ -604,7 +683,7 @@ Integração NFS-e entra como `NfseGateway` interface + adapter; nenhum provedor
 | Race na numeração | lock da sequence na mesma transação do insert |
 | Totais divergentes front/back | backend manda; Filament só exibe |
 | PDF lento | job na fila; UI mostra “gerando…” |
-| Filament 4 / Laravel 12 breaking | travar versões no `composer.json` no scaffold |
+| Filament 5 / Livewire 4 / Laravel 13 | travar `^13.0`, `filament/filament:^5.0` no scaffold; não misturar starter kit |
 | Upload grande em campo | limite 10 MB, mime allowlist imagem/PDF |
 
 ---
@@ -615,7 +694,26 @@ Este par PRD + spec está pronto para desenvolvimento quando o time concordar qu
 
 1. o fluxo orçamento → OS → fatura → recebimento está fechado;
 2. NFS-e, portal do cliente e recorrência ficam de fora do MVP;
-3. a UI do MVP é Filament (backoffice), não um front SPA;
-4. a implementação segue a tabela da seção 18.
+3. a UI do MVP é Filament 5 (backoffice), não um front SPA;
+4. a implementação segue a tabela da seção 18, em Laravel 13.
 
-Próximo commit de produto: **Fase 0** (scaffold).
+Próximo commit de produto: **Fase 0** (scaffold `laravel new` + Filament 5).
+
+---
+
+## 22. Fontes (docs oficiais, 14/08/2026)
+
+| Tema | URL |
+|---|---|
+| Releases / política de suporte | https://laravel.com/docs/13.x/releases |
+| Upgrade 12 → 13 (Pest 4, PHPUnit 12) | https://laravel.com/docs/13.x/upgrade |
+| Installation (`laravel new`, `composer run dev`) | https://laravel.com/docs/13.x/installation |
+| Directory structure | https://laravel.com/docs/13.x/structure |
+| Database (PG 10+) | https://laravel.com/docs/13.x/database |
+| Scheduling (`routes/console.php`) | https://laravel.com/docs/13.x/scheduling |
+| Queues (`Queue::route`, atributos) | https://laravel.com/docs/13.x/queues |
+| Authorization (policies) | https://laravel.com/docs/13.x/authorization |
+| Testing (Pest / Feature) | https://laravel.com/docs/13.x/testing |
+| Eloquent casts | https://laravel.com/docs/13.x/eloquent-mutators |
+| AI / Laravel Boost | https://laravel.com/docs/13.x/ai |
+| Filament 5 install | https://filamentphp.com/docs/5.x/introduction/installation |

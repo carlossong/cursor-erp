@@ -3,7 +3,7 @@
 **Produto:** sistema de gestão para empresa de prestação de serviços  
 **Escopo desta fase:** planejamento (requisitos e spec)  
 **Público:** operação interna (comercial, operacional, financeiro e gestão)  
-**Stack alvo:** Laravel (detalhado em [`spec.md`](./spec.md))  
+**Stack alvo:** Laravel 13 + Filament 5 (detalhado em [`spec.md`](./spec.md))  
 **Idioma / locale:** pt-BR · moeda BRL · fuso `America/Sao_Paulo`
 
 ---
