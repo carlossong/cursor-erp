@@ -48,6 +48,56 @@ class AuthenticationTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_inactive_users_cannot_authenticate(): void
+    {
+        $user = User::factory()->inactive()->create();
+
+        $response = $this->post(route('login.store'), [
+            'email' => $user->email,
+            'password' => 'password',
+        ]);
+
+        $response->assertSessionHasErrorsIn('email');
+
+        $this->assertGuest();
+    }
+
+    public function test_inactive_users_receive_the_same_error_as_invalid_credentials(): void
+    {
+        $user = User::factory()->inactive()->create();
+
+        $this->post(route('login.store'), [
+            'email' => $user->email,
+            'password' => 'password',
+        ])->assertSessionHasErrors([
+            'email' => trans('auth.failed'),
+        ]);
+
+        $this->post(route('login.store'), [
+            'email' => $user->email,
+            'password' => 'wrong-password',
+        ])->assertSessionHasErrors([
+            'email' => trans('auth.failed'),
+        ]);
+    }
+
+    public function test_inactive_authenticated_users_are_logged_out_from_the_dashboard(): void
+    {
+        $user = User::factory()->inactive()->create();
+
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertRedirect(route('login'));
+
+        $this->assertGuest();
+    }
+
+    public function test_guests_are_not_affected_by_the_active_user_middleware(): void
+    {
+        $this->get(route('login'))->assertOk();
+        $this->get(route('home'))->assertOk();
+    }
+
     public function test_users_with_two_factor_enabled_are_redirected_to_two_factor_challenge(): void
     {
         $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
