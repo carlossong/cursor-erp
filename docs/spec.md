@@ -112,7 +112,9 @@ Convenções deste ERP:
 | Mass assignment | `#[Fillable]` + `#[Hidden]` como no `User` do kit. Nunca `#[Unguarded]`. JSON: gravar o objeto inteiro no service; não mass-assign nested `foo->bar` a partir do request. |
 | Defaults | `$attributes` no model (formato “como no banco”): `status` rascunho, `revision` => 1, `is_active` => true. |
 | Casts | método `casts()`: enums, `decimal:2` / `decimal:4`, `immutable_date` / `immutable_datetime`, JSON `array`. |
-| Relacionamentos | listagens e `find` com `with()`. Comparar models com `$a->is($b)`, não `id === id`. |
+| Relacionamentos | método + return type; inverse; FK no filho; `with()` explícito; `chaperone()` nos hasMany de itens. Ver §3.2. |
+| Eager load | `with()` / `loadMissing()` por tela. **Não** `automaticallyEagerLoadRelationships()` — o `shouldBeStrict` deve estourar N+1 em dev. |
+| Filhos | `$quote->items()->create()`. Comparar models com `$a->is($b)`. `whereBelongsTo($customer)`. |
 | Scopes | locais com `#[Scope]` (`forCompany`, `active`, `status`). Sem global scope de empresa no MVP (uma company). Global só o do `SoftDeletes`. |
 | Soft delete | cadastros sim; Quote / WorkOrder / Invoice / Payment **não**. |
 | Revisão de orçamento | `$quote->replicate([...campos de status/envio...])` + copiar itens; `parent_id` e `revision + 1`. |
@@ -221,15 +223,20 @@ erDiagram
   Company ||--o{ Customer : has
   Company ||--o{ Service : has
   Company ||--o{ Quote : has
+  Customer ||--o{ CustomerContact : has
   Customer ||--o{ Quote : requests
   Quote ||--|{ QuoteItem : contains
   Quote ||--o| WorkOrder : converts_to
+  Quote ||--o| Invoice : immediate_bill
   WorkOrder ||--|{ WorkOrderItem : contains
   WorkOrder ||--o{ TimeEntry : logs
+  WorkOrder ||--o{ Attachment : morphs
   WorkOrder ||--o| Invoice : bills
   Invoice ||--|{ InvoiceItem : contains
   Invoice ||--|{ InvoiceInstallment : splits
   InvoiceInstallment ||--o{ Payment : receives
+  Quote ||--o{ Attachment : morphs
+  Invoice ||--o{ Attachment : morphs
 ```
 
 ### 3.1 Agregados
@@ -237,11 +244,82 @@ erDiagram
 | Agregado | Raiz | Filhos | Invariantes |
 |---|---|---|---|
 | Empresa | `Company` | settings | uma ativa no MVP |
-| Cliente | `Customer` | `contacts`, `addresses` | documento válido |
+| Cliente | `Customer` | `contacts` (endereço = JSON no pai) | documento válido |
 | Catálogo | `Service` | — | código único por company |
 | Orçamento | `Quote` | `items` | totais = soma dos itens; enviado é imutável |
 | OS | `WorkOrder` | `items`, `time_entries`, `attachments` | nasce de quote aprovada (ou imediato) |
 | Fatura | `Invoice` | `items`, `installments`, `payments` | soma parcelas = total; origem única |
+
+### 3.2 Relacionamentos Eloquent
+
+Fonte: [eloquent-relationships](https://laravel.com/docs/13.x/eloquent-relationships).
+
+Regras:
+
+1. Cada relação é um **método** com return type (`BelongsTo`, `HasMany`, `HasOne`, `HasManyThrough`, `MorphMany`, `MorphTo`).
+2. Sempre definir a **inverse**. FK canônica no **filho**; o pai usa `hasOne` / `hasMany`. Sem FK duplicada nos dois lados.
+3. `hasMany` de coleção que a view lê de volta no pai (`$item->quote`): `->chaperone()` ([has many](https://laravel.com/docs/13.x/eloquent-relationships#one-to-many)).
+4. Nome da relação ≠ `{model}_id`? Passar o FK: `belongsTo(User::class, 'salesperson_id')`.
+5. Filhos se criam pela relação: `$quote->items()->create([...])`, não `QuoteItem::create(['quote_id' => …])`.
+6. Filtro: `Quote::whereBelongsTo($customer)` (e o 2º arg se o nome não for `customer`).
+7. Migrations: `foreignIdFor(Quote::class)->constrained()`. Itens/contatos/parcelas: `cascadeOnDelete()`. Cliente, orçamento, OS, fatura entre si: `restrictOnDelete()`.
+8. Many-to-many de negócio: **nenhum** no MVP. Papéis = Spatie (`belongsToMany` interno do pacote).
+
+| Model | Método | Tipo | Detalhe |
+|---|---|---|---|
+| `Company` | `users`, `customers`, `services`, `quotes`, `workOrders`, `invoices` | `HasMany` | |
+| `User` | `company` | `BelongsTo` | |
+| `Customer` | `company` | `BelongsTo` | |
+| `Customer` | `contacts` | `HasMany` + `chaperone()` | |
+| `Customer` | `primaryContact` | `HasOne` scoped | `contacts()->one()->where('is_primary', true)` + `withAttributes(['is_primary' => true])` |
+| `Customer` | `quotes` | `HasMany` | |
+| `Customer` | `latestQuote` | `HasOne` of many | `hasOne(Quote::class)->latestOfMany()` |
+| `CustomerContact` | `customer` | `BelongsTo` | |
+| `Service` | `company`, `category` | `BelongsTo` | category nullable |
+| `ServiceCategory` | `services` | `HasMany` | |
+| `Quote` | `company`, `customer`, `contact`, `salesperson`, `approvedBy`, `rejectedBy`, `parent` | `BelongsTo` | FKs nomeadas |
+| `Quote` | `items` | `HasMany` | `orderBy('position')->chaperone()` |
+| `Quote` | `revisions` | `HasMany` | `hasMany(Quote::class, 'parent_id')` |
+| `Quote` | `workOrder` | `HasOne` | FK em `work_orders.quote_id` |
+| `Quote` | `invoice` | `HasOne` | faturamento imediato; FK em `invoices.quote_id` |
+| `QuoteItem` | `quote`, `service` | `BelongsTo` | `$touches = ['quote']` |
+| `WorkOrder` | `company`, `customer`, `quote`, `coordinator` | `BelongsTo` | |
+| `WorkOrder` | `items`, `timeEntries` | `HasMany` + `chaperone()` | |
+| `WorkOrder` | `invoice` | `HasOne` | FK em `invoices.work_order_id` |
+| `WorkOrder` | `attachments` | `MorphMany` + `chaperone()` | |
+| `Invoice` | `company`, `customer`, `quote`, `workOrder` | `BelongsTo` | quote XOR workOrder |
+| `Invoice` | `items`, `installments` | `HasMany` + `chaperone()` | |
+| `Invoice` | `payments` | `HasManyThrough` | via `InvoiceInstallment` |
+| `InvoiceInstallment` | `invoice` | `BelongsTo` | `$touches = ['invoice']` |
+| `InvoiceInstallment` | `payments` | `HasMany` + `chaperone()` | |
+| `Payment` | `installment` | `BelongsTo` | |
+| `Attachment` | `documentable` | `MorphTo` | |
+| `Quote` / `Invoice` | `attachments` | `MorphMany` | mesmo morph |
+
+**Morph map** (quando `Attachment` existir), em `AppServiceProvider`:
+
+```php
+Relation::enforceMorphMap([
+    'quote' => Quote::class,
+    'work_order' => WorkOrder::class,
+    'invoice' => Invoice::class,
+]);
+```
+
+Não persistir FQCN em `documentable_type` ([custom polymorphic types](https://laravel.com/docs/13.x/eloquent-relationships#custom-polymorphic-types)).
+
+**Eager load por tela** (exemplos; ajustar na implementação):
+
+| Tela | `with` / agregados |
+|---|---|
+| Lista orçamentos | `customer`, `salesperson` + `withCount('items')` |
+| Show orçamento / PDF | `customer.contacts`, `items.service`, `salesperson` |
+| Lista faturas | `customer` + `withSum('payments', 'amount')` |
+| Dashboard | `withCount` filtrado por status, não `all()` + loop |
+
+`loadMissing()` se o model já veio de outro ponto. Sem `$with` default nos agregados grandes (não inflar lista).
+
+**Não usar:** `Model::automaticallyEagerLoadRelationships()` — a doc oferece isso como rede de segurança; neste ERP o N+1 tem que falhar em dev (`preventLazyLoading`). Sem `withDefault()` em vendedor/cliente obrigatórios (esconderia dado faltando).
 
 ---
 
@@ -487,8 +565,8 @@ Padrão Laravel + `company_id`, `name`, `email`, `is_active`, `phone`. Papéis n
 | sent_at, approved_at, rejected_at, expired_at | timestamps nullable | |
 | approved_by, rejected_by | FK users nullable | |
 | rejection_reason | text nullable | |
-| converted_work_order_id | FK nullable | preenchido na conversão |
-| converted_invoice_id | FK nullable | faturamento imediato |
+
+Conversão: **não** há `converted_work_order_id` / `converted_invoice_id` no orçamento. A OS aponta para o orçamento (`work_orders.quote_id`); a fatura aponta para a origem (`invoices.quote_id` XOR `invoices.work_order_id`). Inverse: `Quote::workOrder()` / `Quote::invoice()` como `hasOne`.
 
 Unique: `(company_id, number, revision)`.
 
@@ -496,18 +574,19 @@ Unique: `(company_id, number, revision)`.
 
 ### 8.6 `work_orders`
 
-| Coluna | Tipo |
-|---|---|
-| company_id, customer_id, quote_id | FKs |
-| number | unique por company |
-| status | |
-| coordinator_id | FK users nullable |
-| scheduled_start, scheduled_end | datetime nullable |
-| location_text | string nullable |
-| notes | text |
-| completed_at | |
-| cancel_reason | |
-| invoice_id | FK nullable |
+| Coluna | Tipo | Notas |
+|---|---|---|
+| company_id, customer_id, quote_id | FKs | `quote_id` unique no MVP (uma OS por orçamento; complementar = P1) |
+| number | string | unique por company |
+| status | string | enum |
+| coordinator_id | FK users nullable | |
+| scheduled_start, scheduled_end | datetime nullable | |
+| location_text | string nullable | |
+| notes | text | |
+| completed_at | timestamp nullable | |
+| cancel_reason | text nullable | |
+
+Fatura da OS: `Invoice::workOrder()` / `WorkOrder::invoice()` via `invoices.work_order_id` — **sem** `work_orders.invoice_id`.
 
 `work_order_items`: snapshot dos itens do orçamento (`source_quote_item_id`).
 
@@ -520,7 +599,7 @@ Unique: `(company_id, number, revision)`.
 | Coluna | Tipo | Notas |
 |---|---|---|
 | company_id, customer_id | | |
-| quote_id, work_order_id | nullable | exatamente um preenchido |
+| quote_id, work_order_id | nullable | exatamente um preenchido (XOR). Unique parcial em cada um (FAT-07). |
 | number | | |
 | status | | |
 | issue_date, due_date | date | due_date da 1ª parcela ou à vista |
@@ -592,7 +671,7 @@ Policies Laravel espelham a tabela. Livewire chama `$this->authorize()`; rotas u
 - `send(Quote): void` — valida ≥1 item, total > 0, gera PDF, status enviado
 - `approve`, `reject`, `cancel`
 - `revise(Quote): Quote` — `replicate()` + itens; nova revisão rascunho
-- `convert(Quote): WorkOrder|Invoice` — segundo `billing_mode` predominante dos itens; se mistos, **exige OS** (mais seguro)
+- `convert(Quote): WorkOrder|Invoice` — cria via `$quote->workOrder()->create()` / `$quote->invoice()->create()` segundo `billing_mode`; se mistos, **exige OS**. Idempotente: `workOrder()->exists()` / `invoice()->exists()`.
 
 ### `WorkOrderService`
 
@@ -613,7 +692,7 @@ Policies Laravel espelham a tabela. Livewire chama `$this->authorize()`; rotas u
 
 - `next(Company $c, string $type): string`
 
-Idempotência: `convert` e `createFromWorkOrder` usam transação e checam `converted_*_id` / `invoice_id`.
+Idempotência: `convert` e `createFromWorkOrder` usam transação e `lockForUpdate` no documento origem; recusam se `workOrder()` / `invoice()` já existir (unique em `work_orders.quote_id` e `invoices.work_order_id` / `invoices.quote_id`).
 
 ---
 
@@ -838,6 +917,7 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 | Directory structure | https://laravel.com/docs/13.x/structure |
 | Database (PG 10+) | https://laravel.com/docs/13.x/database |
 | Eloquent (models, strictness, Fillable, scopes, observers) | https://laravel.com/docs/13.x/eloquent |
+| Eloquent relationships (`with`, chaperone, morph map, hasOne of many) | https://laravel.com/docs/13.x/eloquent-relationships |
 | Scheduling (`routes/console.php`) | https://laravel.com/docs/13.x/scheduling |
 | Queues (`afterCommit`, unique, atributos) | https://laravel.com/docs/13.x/queues |
 | Horizon | https://laravel.com/docs/13.x/horizon |
