@@ -52,6 +52,8 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - `$table->enum()` nativo para status. Coluna `string` + cast PHP enum — alterar casos não exige `using()` no PostgreSQL nem quebra o sqlite dos testes.
 - Editar migration já rodada/commitada. `schema:dump --prune` só depois do MVP, se o diretório inflar.
 - `Paginator::useBootstrapFive()` / views Bootstrap. O kit é Tailwind + Flux; `app.css` já faz `@source` das views de paginação Laravel.
+- `Model::all()->filter()` / `reject()` / `map()` no lugar de `where` no banco (NFR-02). Collection só no conjunto já carregado (itens do orçamento, parcelas da fatura).
+- `toQuery()->update()` em `status` de Quote / OS / Invoice / Payment — bypassa service, observer e máquina de estados.
 - `whereRaw` / `selectRaw` sem bindings; `orderBy` com nome de coluna do usuário; `DB::table()` no domínio (usar o model). Similarity/pgvector e `whereFullText` fora do MVP.
 - `routes/api.php` até o P1 (`install:api`). CSRF do painel permanece; Laravel 13 formalizou `PreventRequestForgery`.
 
@@ -70,7 +72,7 @@ flowchart TB
 
 ### 1.3 Convenções Laravel 13 que esta spec segue
 
-Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [eloquent](https://laravel.com/docs/13.x/eloquent), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
+Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [eloquent](https://laravel.com/docs/13.x/eloquent), [eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections), [migrations](https://laravel.com/docs/13.x/migrations), [queries](https://laravel.com/docs/13.x/queries), [pagination](https://laravel.com/docs/13.x/pagination), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
 
 1. **Criar o app** com `laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction`.
 2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). App autenticado em `/dashboard`. Telescope só nesse ambiente.
@@ -85,6 +87,7 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 11. **Migrations** anônimas (`return new class extends Migration`), geradas por Artisan. Deploy: `php artisan migrate --force --isolated`. Testes sqlite com `foreign_key_constraints` ligado ([migrations](https://laravel.com/docs/13.x/migrations)).
 12. **Queries** via Eloquent (mesmo query builder). Bindings PDO; **nunca** coluna/`orderBy` vindo do request. Jobs: `lazyById`. Numeração: `lockForUpdate` + `increment` dentro de `DB::transaction` ([queries](https://laravel.com/docs/13.x/queries)).
 13. **Paginação** `paginate(15)` (`LengthAwarePaginator`) nas listagens Livewire + `<flux:pagination>`. Tailwind default do kit; **não** Bootstrap. `cursorPaginate` fora do MVP ([pagination](https://laravel.com/docs/13.x/pagination)).
+14. **Collections** Eloquent no agregado já carregado (`$quote->items`). Filtro de listagem é SQL, não `Model::all()->reject()`. `toQuery()->update()` **não** muda status de documento ([eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections)).
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
@@ -131,6 +134,21 @@ Convenções deste ERP:
 | Factory | `HasFactory` em todo model de domínio. Inspecionar com `php artisan model:show`. |
 
 Transações de agregado: `DB::transaction()`. `lockForUpdate()` na linha de `document_sequences` (que tem `id` PK + unique composto).
+
+**Eloquent collections** ([eloquent-collections](https://laravel.com/docs/13.x/eloquent-collections))
+
+`get()` e relações `hasMany` devolvem `Illuminate\Database\Eloquent\Collection` (estende a collection base). `pluck` / `map` sem models viram `Support\Collection`.
+
+| Uso | Como |
+|---|---|
+| Totais do orçamento/fatura | itens **já** eager-loaded: `$quote->items->sum('net')`. Não `Quote::all()` depois somar em PHP. |
+| Pertence ao conjunto | `$quote->items->contains($item)` (PK ou model), não loop de `id ===`. |
+| Relação depois do `get` | `$quotes->loadMissing('customer')`. Paginator: `$page->getCollection()->loadMissing(...)`. |
+| IDs | `$items->modelKeys()`, não `pluck('id')`, para `whereIn`. |
+| Custo / margem | comercial: `$items->makeHidden(['cost_snapshot'])` (NFR de custo). |
+| Refresh | `$models->fresh()` só se outro processo (job PDF) puder ter alterado a linha. |
+| Custom | `#[CollectedBy]` só em `QuoteItem` / `InvoiceItem` se soma/posição se repetir em 2+ services. Não collection custom em todo model. |
+| Bulk SQL | `toQuery()` ok para campo não-estado. **Proibido** para transições de status. |
 
 **Migrations** ([migrations](https://laravel.com/docs/13.x/migrations))
 
@@ -527,7 +545,7 @@ Regras:
 
 - `discount_amount` de item não pode ser > `gross`.
 - Desconto de cabeçalho no MVP: **não** (só por item). Evita dupla interpretação. P1 se o comercial pedir.
-- Recalcular sempre no `saving` do item e no `QuoteService::recalculate(Quote)`.
+- Recalcular sempre no `saving` do item e no `QuoteService::recalculate(Quote)` com `$quote->items->sum(...)` (collection do agregado carregado).
 - Snapshot: ao enviar orçamento / emitir fatura, persistir `*_snapshot` já calculado; PDF lê o snapshot.
 
 ---
@@ -1009,6 +1027,7 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 | Pagination (`paginate`, Flux, Tailwind) | https://laravel.com/docs/13.x/pagination |
 | Eloquent (models, strictness, Fillable, scopes, observers) | https://laravel.com/docs/13.x/eloquent |
 | Eloquent relationships (`with`, chaperone, morph map, hasOne of many) | https://laravel.com/docs/13.x/eloquent-relationships |
+| Eloquent collections (`loadMissing`, `contains`, `toQuery`, `CollectedBy`) | https://laravel.com/docs/13.x/eloquent-collections |
 | Scheduling (`routes/console.php`) | https://laravel.com/docs/13.x/scheduling |
 | Queues (`afterCommit`, unique, atributos) | https://laravel.com/docs/13.x/queues |
 | Horizon | https://laravel.com/docs/13.x/horizon |
