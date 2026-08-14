@@ -46,8 +46,9 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 - Octane, Passport, Scout, Cashier, Reverb, Folio, Mix, Homestead, Nova — fora do problema.
 - Registro público no painel (`Features::registration()`). Usuários são criados pelo admin.
 - Microserviços, DDD tático pesado, event sourcing, `nwidart/laravel-modules`.
-- Soft delete em **documentos numerados**: status `cancelado`. Soft delete só em cadastros se fizer sentido.
+- Soft delete em **documentos numerados**: status `cancelado`. `SoftDeletes` só em cadastros (`Customer`, `Service`, `ServiceCategory`) para ocultar sem quebrar FKs de orçamento/OS/fatura.
 - Money como `float`. **`decimal(14,2)`** / `decimal(14,4)` + cast Eloquent `decimal:2` / `decimal:4`. Totais no backend, `ROUND_HALF_UP`.
+- PK UUID/ULID, PK composta, `#[Unguarded]` / `$guarded = []`. Eloquent exige um `id` único; unique composto é índice extra, não PK.
 - `routes/api.php` até o P1 (`install:api`). CSRF do painel permanece; Laravel 13 formalizou `PreventRequestForgery`.
 
 ### 1.2 Diagrama de contexto
@@ -65,7 +66,7 @@ flowchart TB
 
 ### 1.3 Convenções Laravel 13 que esta spec segue
 
-Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
+Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [eloquent](https://laravel.com/docs/13.x/eloquent), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
 
 1. **Criar o app** com `laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction`.
 2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). App autenticado em `/dashboard`. Telescope só nesse ambiente.
@@ -73,9 +74,10 @@ Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](h
 4. **Schedule** em `routes/console.php` (`Schedule::job(...)->dailyAt('01:00')`), não em `app/Console/Kernel.php` (não existe mais no skeleton).
 5. **Jobs** com atributos PHP 8 do framework: `#[Tries(5)]`, `#[Backoff(60)]`, `#[Timeout(120)]`. Roteamento central: `Queue::route(GenerateDocumentPdfJob::class, connection: 'redis', queue: 'pdfs')`.
 6. **Policies** geradas com `php artisan make:policy`; Livewire chama `$this->authorize()`.
-7. **Enums** backed string + cast Eloquent (`QuoteStatus::class`). Datas de negócio: `immutable_date` / `immutable_datetime`.
-8. **Testes:** a maioria em `tests/Feature`. Rodar `php artisan test`. Paralelo depois, com `brianium/paratest`.
-9. **Boost** na criação (`laravel new … --boost`) para o Cursor consultar a doc na versão instalada.
+7. **Models** em `app/Models`. Gerar com `php artisan make:model Quote -mfs --policy` (migration + factory + seeder + policy). **Não** `--all`: não queremos controller — a UI é Livewire. PK bigint autoincremento; **sem** UUID/ULID e **sem** PK composta ([Eloquent](https://laravel.com/docs/13.x/eloquent)).
+8. **Enums** backed string + cast Eloquent (`QuoteStatus::class`). Datas de negócio: `immutable_date` / `immutable_datetime`.
+9. **Testes:** a maioria em `tests/Feature`. Rodar `php artisan test`. Paralelo depois, com `brianium/paratest`.
+10. **Boost** na criação (`laravel new … --boost`) para o Cursor consultar a doc na versão instalada.
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
@@ -91,16 +93,35 @@ Sem `--react`. Pint, Fortify, Flux, Sail (`require-dev`) e Larastan já vêm no 
 
 Próximos pacotes (Fase 1+): `spatie/laravel-permission`, Horizon, Telescope `--dev`.
 
-**Eloquent** ([configuring Eloquent strictness](https://laravel.com/docs/13.x/eloquent#configuring-eloquent-strictness))
+**Eloquent** ([getting started](https://laravel.com/docs/13.x/eloquent))
 
 No `AppServiceProvider::configureDefaults()`, fora de produção:
 
 ```php
-Model::preventLazyLoading(! app()->isProduction());
-Model::preventSilentlyDiscardingAttributes(! app()->isProduction());
+Model::shouldBeStrict(! app()->isProduction());
 ```
 
-O kit já usa `#[Fillable]` / `#[Hidden]` no `User` (atributos Laravel 13) e cast `hashed`. Relacionamentos em listagens: `with()`. Transações de agregado: `DB::transaction()`.
+Isso liga `preventLazyLoading`, `preventSilentlyDiscardingAttributes` e `preventAccessingMissingAttributes` ([strictness](https://laravel.com/docs/13.x/eloquent#configuring-eloquent-strictness)).
+
+Convenções deste ERP:
+
+| Tema | Decisão |
+|---|---|
+| PK | `id` bigint incrementing. Número comercial (`ORC-…`) **não** é a PK. Sem `HasUuids` / `HasUlids`. |
+| Tabela | convenção Eloquent (plural snake). `#[Table]` só se o nome destoar. |
+| Mass assignment | `#[Fillable]` + `#[Hidden]` como no `User` do kit. Nunca `#[Unguarded]`. JSON: gravar o objeto inteiro no service; não mass-assign nested `foo->bar` a partir do request. |
+| Defaults | `$attributes` no model (formato “como no banco”): `status` rascunho, `revision` => 1, `is_active` => true. |
+| Casts | método `casts()`: enums, `decimal:2` / `decimal:4`, `immutable_date` / `immutable_datetime`, JSON `array`. |
+| Relacionamentos | listagens e `find` com `with()`. Comparar models com `$a->is($b)`, não `id === id`. |
+| Scopes | locais com `#[Scope]` (`forCompany`, `active`, `status`). Sem global scope de empresa no MVP (uma company). Global só o do `SoftDeletes`. |
+| Soft delete | cadastros sim; Quote / WorkOrder / Invoice / Payment **não**. |
+| Revisão de orçamento | `$quote->replicate([...campos de status/envio...])` + copiar itens; `parent_id` e `revision + 1`. |
+| Observers | `php artisan make:observer` + `#[ObservedBy]` no model. Recalcular totais no `saving` do item. |
+| Jobs em lote | `lazyById()` (expirar orçamento, marcar fatura vencida). Não `all()`. `cursor()` não faz eager load. |
+| Lookup | `findOrFail` / `firstOrFail` nas telas. Seeders podem usar `withoutEvents` se o observer não deve disparar. |
+| Factory | `HasFactory` em todo model de domínio. Inspecionar com `php artisan model:show`. |
+
+Transações de agregado: `DB::transaction()`. `lockForUpdate()` na linha de `document_sequences` (que tem `id` PK + unique composto).
 
 **Filas** ([jobs and database transactions](https://laravel.com/docs/13.x/queues#jobs-and-database-transactions))
 
@@ -311,7 +332,7 @@ stateDiagram-v2
 | enviado | expirado | job | se `valid_until < today` |
 | * | cancelado | admin | motivo; não converte |
 
-Revisão: cria **novo** `quotes` com `parent_id` e `revision = n+1`, status `rascunho`, mesmos itens. O original permanece.
+Revisão: `$original->replicate()` (exclui timestamps de envio/aprovação/status), `parent_id = original.id`, `revision = n+1`, status `rascunho`, mesmos itens. O original permanece.
 
 ### 5.2 Ordem de serviço
 
@@ -398,7 +419,7 @@ Regras:
 
 ## 8. Esquema de dados
 
-Convenções: `id` bigint PK, `timestamps`, `company_id` FK onde couber, índices listados.
+Convenções Eloquent ([model conventions](https://laravel.com/docs/13.x/eloquent#eloquent-model-conventions)): `id` bigint PK incrementing, `timestamps`, `company_id` FK onde couber. **Sem PK composta** — unique composto é índice, não a chave do model. Índices listados abaixo.
 
 ### 8.1 `companies`
 
@@ -519,7 +540,15 @@ Check: `(quote_id IS NOT NULL) <> (work_order_id IS NOT NULL)` — XOR de origem
 
 ### 8.8 `document_sequences`
 
-`company_id`, `document_type` (`quote`\|`work_order`\|`invoice`), `year`, `last_number`. Unique composto.
+| Coluna | Tipo | Notas |
+|---|---|---|
+| id | bigint PK | Eloquent exige PK simples |
+| company_id | FK | |
+| document_type | string | `quote` \| `work_order` \| `invoice` |
+| year | int | |
+| last_number | int | |
+
+Unique: `(company_id, document_type, year)`. Numeração: `lockForUpdate()` nessa linha.
 
 ### 8.9 `audit_logs`
 
@@ -562,7 +591,7 @@ Policies Laravel espelham a tabela. Livewire chama `$this->authorize()`; rotas u
 - `create`, `updateDraft`, `addItem`, `recalculate`
 - `send(Quote): void` — valida ≥1 item, total > 0, gera PDF, status enviado
 - `approve`, `reject`, `cancel`
-- `revise(Quote): Quote` — nova revisão
+- `revise(Quote): Quote` — `replicate()` + itens; nova revisão rascunho
 - `convert(Quote): WorkOrder|Invoice` — segundo `billing_mode` predominante dos itens; se mistos, **exige OS** (mais seguro)
 
 ### `WorkOrderService`
@@ -680,7 +709,7 @@ Rodar: `php artisan test`. Paralelo depois: `composer require brianium/paratest 
 | `NumberGeneratorTest` | concorrência (2 next na mesma transação simulada) |
 | `PermissionTest` | comercial não emite fatura; financeiro não edita catálogo |
 
-Factories (`php artisan make:factory`) para Company, User, Customer, Service, Quote. Seed de papéis nos testes via seeder mínimo ou `beforeEach`.
+Factories (`php artisan make:factory`) para Company, User, Customer, Service, Quote. Todo model de domínio usa `HasFactory`. Seed de papéis nos testes via seeder mínimo ou `beforeEach`.
 
 ---
 
@@ -729,7 +758,7 @@ Ordem rígida — cada fase mergeável e testável.
 
 | Fase | Entrega | Critério de pronto |
 |---|---|---|
-| **0** | Starter kit Livewire + Blade (classe) + Fortify sem registro + `MustVerifyEmail` + locale pt_BR + Eloquent strictness | `/login` e `/dashboard` funcionam, `/register` 404, e-mail não verificado não entra no painel, `/up` 200, `php artisan test` verde |
+| **0** | Starter kit Livewire + Blade (classe) + Fortify sem registro + `MustVerifyEmail` + locale pt_BR + Eloquent `shouldBeStrict` | `/login` e `/dashboard` funcionam, `/register` 404, e-mail não verificado não entra no painel, `/up` 200, `php artisan test` verde |
 | **1** | Company, users, roles, settings | AUTH-* |
 | **2** | Clientes + contatos | CLI-* |
 | **3** | Categorias e serviços | CAT-* |
@@ -808,7 +837,7 @@ Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis)
 | Playbook de agentes (default React — **não** usamos) | https://laravel.com/for/agents |
 | Directory structure | https://laravel.com/docs/13.x/structure |
 | Database (PG 10+) | https://laravel.com/docs/13.x/database |
-| Eloquent strictness | https://laravel.com/docs/13.x/eloquent |
+| Eloquent (models, strictness, Fillable, scopes, observers) | https://laravel.com/docs/13.x/eloquent |
 | Scheduling (`routes/console.php`) | https://laravel.com/docs/13.x/scheduling |
 | Queues (`afterCommit`, unique, atributos) | https://laravel.com/docs/13.x/queues |
 | Horizon | https://laravel.com/docs/13.x/horizon |
