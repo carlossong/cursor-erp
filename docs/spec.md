@@ -17,29 +17,29 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 | PHP | 8.3+ (alvo 8.4/8.5) | piso do Laravel 13; installer oficial instala 8.5 |
 | Banco | PostgreSQL 16 | Laravel 13 suporta PG 10+; JSONB, constraints, `lockForUpdate` ([database](https://laravel.com/docs/13.x/database)) |
 | Cache / fila | Redis; Horizon em staging/prod | filas Redis/database oficiais; `Queue::route` para jobs de PDF ([queues](https://laravel.com/docs/13.x/queues)) |
-| UI interna | **Filament 5** (`^5.0`) + Livewire 4 + Tailwind 4.1+ | painel `/admin`; v5 é o atual para app novo ([install Filament 5](https://filamentphp.com/docs/5.x/introduction/installation)) |
-| Auth | sessão do painel Filament + Spatie Permission + **Policies** Laravel | authorization por policy, não por if solto ([authorization](https://laravel.com/docs/13.x/authorization)) |
+| UI interna | **Livewire 4 + Blade + Flux UI 2** (componentes em classe) | starter kit oficial ([starter kits](https://laravel.com/docs/13.x/starter-kits#livewire), [frontend](https://laravel.com/docs/13.x/frontend#livewire)) |
+| Auth | **Fortify** + Spatie Permission + **Policies** Laravel | kit já usa Fortify; sem registro público ([Fortify](https://laravel.com/docs/13.x/starter-kits#authentication)) |
 | PDF | `barryvdh/laravel-dompdf` (MVP) | A4 simples; Browsershot se o layout exigir |
 | Storage | `local` em dev; S3-compatível em prod | `php artisan storage:link` para anexos públicos |
 | Front público | nenhum no MVP | link de aprovação = P1 |
 | API HTTP | **não** no MVP | P1: `php artisan install:api` (Sanctum) + JSON:API resources nativos do Laravel 13 |
 | Multitenancy | **não** no MVP. Toda tabela de negócio tem `company_id` (seed = `1`) | evita retrabalho na P2 |
 | Idioma | `APP_LOCALE=pt_BR`, `APP_FAKER_LOCALE=pt_BR`, `APP_TIMEZONE=America/Sao_Paulo` | [configuration](https://laravel.com/docs/13.x/configuration) / [installation](https://laravel.com/docs/13.x/installation) |
-| Testes | **Pest 4** (PHPUnit 12 por baixo) | default do `laravel new`; a maioria dos testes é Feature ([testing](https://laravel.com/docs/13.x/testing)) |
+| Testes | **Pest 5** (kit oficial Livewire, ago/2026) | Feature tests ([testing](https://laravel.com/docs/13.x/testing)) |
 | Qualidade | Pint (preset `laravel`) + Pest no CI | `./vendor/bin/pint --test` e `php artisan test` ([Pint](https://laravel.com/docs/13.x/pint)) |
 | DX / agentes | Laravel Boost (`--boost` no `laravel new`) | MCP + guidelines na versão instalada ([Boost](https://laravel.com/docs/13.x/boost)) |
 | Dev local | **Sail** (Postgres + Redis) + `composer run dev` | ambiente reproduzível ([Sail](https://laravel.com/docs/13.x/sail)); Herd ok na máquina, o repo padroniza Sail |
 | Filas prod | **Horizon** (Redis) | dashboard e supervisor de workers ([Horizon](https://laravel.com/docs/13.x/horizon)) |
 | Debug local | **Telescope** (`--dev`) | só local/staging; nunca produção ([Telescope](https://laravel.com/docs/13.x/telescope)) |
 | Observabilidade prod | Pulse (P1) · Nightwatch opcional | Pulse é first-party self-hosted; Nightwatch é SaaS pago ([Pulse](https://laravel.com/docs/13.x/pulse)) |
-| Deploy | Laravel Cloud **ou** Forge | `php artisan optimize` + `filament:optimize` + `php artisan reload` ([deployment](https://laravel.com/docs/13.x/deployment), [Filament deploy](https://filamentphp.com/docs/5.x/deployment)) |
+| Deploy | Laravel Cloud **ou** Forge | `php artisan optimize` + `php artisan reload` ([deployment](https://laravel.com/docs/13.x/deployment)) |
 | Healthcheck | rota `/up` (default Laravel 13) | load balancer / orquestrador |
 
 ### 1.1 O que não usar no MVP
 
-- **Starter kit React/Vue/Svelte.** O playbook [laravel.com/for/agents](https://laravel.com/for/agents) defaulta `--react`. Este produto é backoffice interno: **Filament 5**, sem kit SPA. Livewire starter kit também não — o painel já traz Livewire 4.
-- Laravel AI SDK, embeddings, `whereVectorSimilarTo` / pgvector — irrelevantes para o fluxo financeiro.
-- **Filament Shield.** Policies Laravel + papéis Spatie escritos à mão. Shield gera permissão por botão e esconde a regra de negócio (desconto, cancelar fatura paga).
+- **Starter kit React/Vue/Svelte.** O playbook [laravel.com/for/agents](https://laravel.com/for/agents) defaulta `--react`. Este produto é backoffice em PHP: **`--livewire --livewire-class-components`**.
+- **Filament.** A UI é Livewire + Blade + Flux; Resources/painel `/admin` não entram.
+- **Volt / SFC.** Componentes em **classe** (`app/Livewire`) + view Blade (`resources/views/livewire`), não single-file.
 - **Telescope em produção.** É ferramenta de debug local.
 - Octane, Passport, Scout, Cashier, Reverb, Folio, Mix, Homestead, Nova — fora do problema.
 - Registro público no painel (`->registration()`). Usuários são criados pelo admin.
@@ -52,7 +52,7 @@ Alinhadas à documentação atual do Laravel 13 (release 17/03/2026). Laravel 12
 
 ```mermaid
 flowchart TB
-  U[Usuários internos] --> F[Filament 5 / Laravel 13]
+  U[Usuários internos] --> F[Livewire 4 / Blade / Laravel 13]
   F --> DB[(PostgreSQL 16)]
   F --> R[(Redis / Horizon)]
   F --> S[Storage anexos]
@@ -65,69 +65,64 @@ flowchart TB
 
 Fonte: [installation](https://laravel.com/docs/13.x/installation), [structure](https://laravel.com/docs/13.x/structure), [scheduling](https://laravel.com/docs/13.x/scheduling), [queues](https://laravel.com/docs/13.x/queues), [testing](https://laravel.com/docs/13.x/testing).
 
-1. **Criar o app** com `laravel new cursor-erp --database=pgsql --pest --boost --no-interaction`. Sem starter kit SPA.
-2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). Painel em `/admin`. Telescope só nesse ambiente.
-3. **Bootstrap:** `bootstrap/app.php` + `bootstrap/providers.php`. O Filament registra `App\Providers\Filament\AdminPanelProvider` aí — se o `/admin` 404, conferir esse arquivo.
+1. **Criar o app** com `laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction`.
+2. **Dev:** Sail (pgsql+redis) e `composer run dev` (HTTP + queue + Vite). App autenticado em `/dashboard`. Telescope só nesse ambiente.
+3. **Bootstrap:** `bootstrap/app.php` + `bootstrap/providers.php`. Auth: Fortify (`config/fortify.php`).
 4. **Schedule** em `routes/console.php` (`Schedule::job(...)->dailyAt('01:00')`), não em `app/Console/Kernel.php` (não existe mais no skeleton).
 5. **Jobs** com atributos PHP 8 do framework: `#[Tries(5)]`, `#[Backoff(60)]`, `#[Timeout(120)]`. Roteamento central: `Queue::route(GenerateDocumentPdfJob::class, connection: 'redis', queue: 'pdfs')`.
-6. **Policies** geradas com `php artisan make:policy`; Filament consulta `canViewAny` / `canUpdate` etc.
+6. **Policies** geradas com `php artisan make:policy`; Livewire chama `$this->authorize()`.
 7. **Enums** backed string + cast Eloquent (`QuoteStatus::class`). Datas de negócio: `immutable_date` / `immutable_datetime`.
-8. **Testes:** a maioria em `tests/Feature` (a doc recomenda Feature, não Unit, para confiança de fluxo). Rodar `php artisan test`. Paralelo depois, com `brianium/paratest`.
+8. **Testes:** a maioria em `tests/Feature`. Rodar `php artisan test`. Paralelo depois, com `brianium/paratest`.
 9. **Boost** na criação (`laravel new … --boost`) para o Cursor consultar a doc na versão instalada.
 
 ### 1.4 Práticas do ecossistema (obrigatórias neste projeto)
 
-Fontes: Eloquent, Queues, Mail, Notifications, Errors, Filament (code quality, users, security, testing, deploy).
+Fontes: Eloquent, Queues, Mail, Notifications, Errors, Livewire, Fortify, starter kit.
 
 **Criação (desvio consciente do playbook de agentes)**
 
 ```bash
-laravel new cursor-erp --database=pgsql --pest --boost --no-interaction
-cd cursor-erp
-composer require filament/filament:"^5.0"
-php artisan filament:install --panels
-php artisan sail:install --with=pgsql,redis
-composer require laravel/telescope --dev && php artisan telescope:install
-composer require laravel/horizon && php artisan horizon:install
-composer require spatie/laravel-permission && php artisan vendor:publish --provider="Spatie\Permission\PermissionServiceProvider"
+laravel new cursor-erp --livewire --livewire-class-components --database=pgsql --pest --boost --no-interaction
 ```
 
-Sem `--react`. Pint já vem no skeleton.
+Sem `--react`. Pint, Fortify, Flux, Sail (`require-dev`) e Larastan já vêm no kit. **Neste repositório** a Fase 0 já foi aplicada na raiz, preservando `docs/`.
+
+Próximos pacotes (Fase 1+): `spatie/laravel-permission`, Horizon, Telescope `--dev`.
 
 **Eloquent** ([configuring Eloquent strictness](https://laravel.com/docs/13.x/eloquent#configuring-eloquent-strictness))
 
-No `AppServiceProvider::boot()`, fora de produção:
+No `AppServiceProvider::configureDefaults()`, fora de produção:
 
 ```php
-Model::preventLazyLoading(! $this->app->isProduction());
-Model::preventSilentlyDiscardingAttributes(! $this->app->isProduction());
+Model::preventLazyLoading(! app()->isProduction());
+Model::preventSilentlyDiscardingAttributes(! app()->isProduction());
 ```
 
-`$fillable` explícito (nunca `$guarded = []` com strictness). Relacionamentos usados em listagens: `with()`. Senha: cast `hashed`. Transações de agregado: `DB::transaction()`.
+O kit já usa `#[Fillable]` / `#[Hidden]` no `User` (atributos Laravel 13) e cast `hashed`. Relacionamentos em listagens: `with()`. Transações de agregado: `DB::transaction()`.
 
 **Filas** ([jobs and database transactions](https://laravel.com/docs/13.x/queues#jobs-and-database-transactions))
 
-PDF e e-mail: `ShouldQueue` + `->afterCommit()` depois de gravar o documento (evita job rodar com transação aberta). `ShouldBeUnique` no PDF. Horizon em staging/prod; local o `composer run dev` já sobe worker. `horizon:listen` no dev se usar Horizon local.
+PDF e e-mail: `ShouldQueue` + `->afterCommit()` depois de gravar o documento. `ShouldBeUnique` no PDF. Horizon em staging/prod; local o `composer run dev` já sobe worker.
 
-**Filament 5**
+**Livewire 4 + Blade**
 
-- `User` implementa `FilamentUser`. `canAccessPanel()` = `is_active` e tem um dos papéis. Sem isso, **ninguém entra em produção** ([users](https://filamentphp.com/docs/5.x/users/overview), [deployment](https://filamentphp.com/docs/5.x/deployment)).
-- Painel: `->login()->passwordReset()->profile()` — sem `registration()`. MFA Filament = P1.
-- Resources geram classes de Schema/Table (`CustomerForm::configure`) — [code quality tips](https://filamentphp.com/docs/5.x/resources/code-quality-tips). Ações de status **não** ficam gordas no Resource: chamam `QuoteService` / `InvoiceService`.
-- Testes Pest no **page** Livewire (`ListQuotes`, `ViewQuote`), não na classe Resource ([testing](https://filamentphp.com/docs/5.x/testing/overview)). Plugin Livewire do Pest.
-- Anexos: `FileUpload` do Filament + disco Laravel (`storage`), não Media Library no MVP.
+- Páginas e formulários em `app/Livewire` + `resources/views/livewire/*.blade.php`. Layouts em `resources/views/layouts` (sidebar Flux).
+- Auth: Fortify. `Features::registration()` **desligado**. Login `/login`, home autenticada `/dashboard`. MFA/2FA do kit = P1 (já está no Fortify, podemos manter desabilitado na UX até o P1).
+- Ações de status chamam `QuoteService` / `InvoiceService`, não gravam status no componente.
+- Testes Pest: `livewire(ListQuotes::class)` e HTTP tests nas rotas.
+- Anexos: upload Livewire/Blade + disco Laravel (`storage`).
 
 **Mail / notificação (P1)**
 
-Mailables e `Notification` com `ShouldQueue`. Local: `MAIL_MAILER=log`. Não mandar senha em log. Canal `database` do Filament para sino interno quando o e-mail entrar.
+Mailables e `Notification` com `ShouldQueue`. Local: `MAIL_MAILER=log`.
 
 **Segurança e produção**
 
 - `APP_DEBUG=false` em produção ([deployment](https://laravel.com/docs/13.x/deployment#debug-mode)).
-- Deploy: `php artisan optimize` + `php artisan filament:optimize` + `php artisan reload` (workers/Horizon). Manter `filament:upgrade` no `post-autoload-dump` do Composer.
-- Health: `/up`. Listener de `DiagnosingHealth` pode pingar Postgres/Redis.
+- Deploy: `php artisan optimize` + `php artisan reload` (workers/Horizon).
+- Health: `/up`.
 - Não servir a app fora de `public/`.
-- Rate limit no login (default Filament/Laravel).
+- Rate limit no login (Fortify).
 
 **CI**
 
@@ -136,7 +131,7 @@ Mailables e `Notification` com `ShouldQueue`. Local: `MAIL_MAILER=log`. Não man
 php artisan test
 ```
 
-Pint preset `laravel`, sem `pint.json` custom no MVP.
+Pint já vem com `pint.json` do starter kit (preset Laravel).
 
 ---
 
@@ -153,23 +148,25 @@ app/
   Models/
   Policies/
   Observers/
-  Services/            # regras de conversão e totais (não HTTP)
-    QuoteService.php
-    WorkOrderService.php
-    InvoiceService.php
-    NumberGenerator.php
-    Money.php
+  Services/
+  Livewire/            # páginas e formulários (classe)
+    Quotes/
+    WorkOrders/
+    Invoices/
   Jobs/
   Providers/
     AppServiceProvider.php
-    Filament/AdminPanelProvider.php
-  Filament/            # Resources, Pages, Widgets (gerado pelo Filament)
+    FortifyServiceProvider.php
 database/migrations/
 database/factories/
 database/seeders/
-resources/views/pdf/
+resources/views/
+  layouts/
+  livewire/
+  pdf/
+lang/pt_BR.json
 routes/web.php
-routes/console.php     # schedule + comandos closure
+routes/console.php
 docs/prd.md
 docs/spec.md
 tests/Feature/
@@ -273,7 +270,7 @@ Nos models, declarar casts no método `casts()` (Laravel 13): enums acima, valor
 
 ## 5. Máquinas de estado
 
-Transições só via services (`QuoteService::send()`, etc.), nunca `update(['status' => …])` solto nas pages Filament.
+Transições só via services (`QuoteService::send()`, etc.), nunca `update(['status' => …])` solto no componente Livewire.
 
 ### 5.1 Orçamento
 
@@ -539,7 +536,7 @@ Papéis: `admin`, `comercial`, `operacao`, `financeiro`, `gestor`.
 \* financeiro cancela fatura **sem** pagamento; com pagamento, só admin.  
 \** dashboard filtrado ao seu domínio (pipeline vs OS vs a receber).
 
-Policies Laravel espelham a tabela. Filament `canViewAny` / `canEdit` consultam a policy.
+Policies Laravel espelham a tabela. Livewire chama `$this->authorize()`; rotas usam middleware `can:`.
 
 ---
 
@@ -620,41 +617,25 @@ Fatura: idem + vencimento/parcelas + PIX/dados bancários. **Não** usar a palav
 
 ---
 
-## 13. Filament 5 — recursos (MVP)
+## 13. Livewire + Blade — telas (MVP)
 
-Instalação (Fase 0), na raiz do Laravel 13:
+Rotas autenticadas em `routes/web.php` (`auth`, `verified`). Componentes em classe:
 
-```bash
-composer require filament/filament:"^5.0"
-php artisan filament:install --panels
-php artisan make:filament-user
-```
-
-Painel `admin` em `/admin`. Conferir `bootstrap/providers.php`. Filament 5 exige Livewire 4 e Tailwind 4.1+; o panel builder já empacota isso — não misturar starter kit Livewire por cima.
-
-`User` implementa `FilamentUser`. Painel: `->login()->passwordReset()->profile()` (sem registro público). `canAccessPanel()` exige usuário ativo com papel.
-
-Resources no layout que o `make:filament-resource` gera (Schema/Table separados). Ações de status (`enviar`, `aprovar`, `emitir`) chamam os services e usam `DB::transaction`.
-
-| Resource | Pages |
+| Componente | Função |
 |---|---|
-| CustomerResource | list, create, edit, view (aba histórico) |
-| ServiceCategoryResource / ServiceResource | CRUD |
-| QuoteResource | list, create/edit (só rascunho), view + ações de status |
-| WorkOrderResource | list, view, apontamentos relation manager |
-| InvoiceResource | list, create (a partir de OS), view, parcelas, pagamentos |
-| Payment implícito | na fatura |
-| UserResource / Role | admin |
-| Company settings | página única |
-| Dashboard | widgets: KPIs do REL-01 a REL-03 |
+| `Livewire\Customers\Index` / `Edit` | clientes + contatos |
+| `Livewire\Services\Index` / `Edit` | catálogo |
+| `Livewire\Quotes\Index` / `Edit` / `Show` | orçamentos + ações de status |
+| `Livewire\WorkOrders\Index` / `Show` | OS + apontamentos |
+| `Livewire\Invoices\Index` / `Show` | faturas, parcelas, pagamentos |
+| `Livewire\Settings\...` | já vem no kit (perfil, senha, aparência) |
+| `dashboard` (view) | KPIs REL-01..03 |
 
-Filtros globais: período, status, cliente. Pesquisa global Filament: número de documento, nome, tax_id.
-
-Testes: `livewire(ListQuotes::class)` / pages, com `actingAs`. Assert de segurança no **banco** (ex.: comercial não persiste fatura), não só botão escondido ([testing](https://filamentphp.com/docs/5.x/testing/overview)).
+Layout sidebar Flux. Ações de status chamam services + `DB::transaction`. Testes: `livewire(...)` + `actingAs`. Assert no **banco**.
 
 ---
 
-## 14. Validação (Form Requests / Filament)
+## 14. Validação (Form Requests / Livewire)
 
 - CNPJ/CPF: algoritmo de dígitos (`league/iso3166` não cobre; usar regra custom ou `laravellegends/pt-br-validator`).
 - E-mail RFC.
@@ -665,9 +646,9 @@ Testes: `livewire(ListQuotes::class)` / pages, com `actingAs`. Assert de seguran
 
 ---
 
-## 15. Testes (Pest 4) — mínimo para o MVP
+## 15. Testes (Pest 5) — mínimo para o MVP
 
-A doc do Laravel 13 pede **Feature tests** para fluxos ([testing](https://laravel.com/docs/13.x/testing)). A do Filament pede testar o **page Livewire**, não a classe Resource. Unit só para `Money` / arredondamento puro (`tests/Unit` **não** acessa banco).
+A doc do Laravel 13 pede **Feature tests** para fluxos. Testar componentes Livewire e rotas HTTP. Unit só para `Money` / arredondamento puro.
 
 Rodar: `php artisan test`. Paralelo depois: `composer require brianium/paratest --dev`. Jobs: `Queue::fake()`; e-mail: `Notification::fake()` / `Mail::fake()`. Ambiente: `phpunit.xml`; opcional `.env.testing`. Telescope desligado em `testing`.
 
@@ -733,7 +714,7 @@ Ordem rígida — cada fase mergeável e testável.
 
 | Fase | Entrega | Critério de pronto |
 |---|---|---|
-| **0** | `laravel new --database=pgsql --pest --boost` + Filament 5 + Sail (pgsql,redis) + Telescope `--dev` + Horizon + Permission + Eloquent strictness | `/admin` loga, `/up` 200, `pint --test` e `php artisan test` verdes |
+| **0** | Starter kit Livewire + Blade (classe) + Fortify sem registro + locale pt_BR + Eloquent strictness | `/login` e `/dashboard` funcionam, `/register` 404, `/up` 200, `php artisan test` verde |
 | **1** | Company, users, roles, settings | AUTH-* |
 | **2** | Clientes + contatos | CLI-* |
 | **3** | Categorias e serviços | CAT-* |
@@ -765,11 +746,11 @@ Integração NFS-e entra como `NfseGateway` interface + adapter; nenhum provedor
 | Risco | Tratamento |
 |---|---|
 | Race na numeração | lock da sequence na mesma transação do insert |
-| Totais divergentes front/back | backend manda; Filament só exibe |
+| Totais divergentes front/back | backend manda; Livewire só exibe |
 | PDF lento | job na fila; UI mostra “gerando…” |
-| Filament 5 / Livewire 4 / Laravel 13 | travar `^13.0`, `filament/filament:^5.0` no scaffold; não misturar starter kit |
+| Livewire 4 / Flux / Laravel 13 | starter kit oficial; `livewire/livewire:^4.1` |
 | Job dispara antes do commit | sempre `->afterCommit()` em PDF/e-mail após gravar documento |
-| Painel aberto em produção | `FilamentUser` + `APP_DEBUG=false` + sem `registration()` |
+| Registro público | `Features::registration()` removido do Fortify |
 | Upload grande em campo | limite 10 MB, mime allowlist imagem/PDF |
 
 ---
@@ -780,10 +761,10 @@ Este par PRD + spec está pronto para desenvolvimento quando o time concordar qu
 
 1. o fluxo orçamento → OS → fatura → recebimento está fechado;
 2. NFS-e, portal do cliente e recorrência ficam de fora do MVP;
-3. a UI do MVP é Filament 5 (backoffice), **não** o starter kit React do playbook de agentes;
+3. a UI do MVP é **Livewire 4 + Blade** (starter kit oficial, componentes em classe), **não** React/Filament;
 4. a implementação segue a tabela da seção 18, em Laravel 13, com as práticas da seção 1.4.
 
-Próximo commit de produto: **Fase 0** (`laravel new --database=pgsql --pest --boost` + Filament 5 + Sail).
+Fase 0 está no repositório. Próximo: **Fase 1** (empresa, usuários, papéis).
 
 ---
 
@@ -793,7 +774,7 @@ Próximo commit de produto: **Fase 0** (`laravel new --database=pgsql --pest --b
 
 **Local:** Telescope. **Staging/prod:** Horizon + log stack. **P1:** Pulse. Nightwatch só se o time quiser SaaS.
 
-**Deploy:** `php artisan migrate --force`, `php artisan optimize`, `php artisan filament:optimize`, `php artisan reload`. Healthcheck `/up`. Document root = `public/`.
+**Deploy:** `php artisan migrate --force`, `php artisan optimize`, `php artisan reload`. Healthcheck `/up`. Document root = `public/`.
 
 ---
 
@@ -802,7 +783,10 @@ Próximo commit de produto: **Fase 0** (`laravel new --database=pgsql --pest --b
 | Tema | URL |
 |---|---|
 | Releases / política de suporte | https://laravel.com/docs/13.x/releases |
-| Upgrade 12 → 13 (Pest 4, PHPUnit 12) | https://laravel.com/docs/13.x/upgrade |
+| Upgrade 12 → 13 | https://laravel.com/docs/13.x/upgrade |
+| Starter kit Livewire | https://laravel.com/docs/13.x/starter-kits#livewire |
+| Frontend Livewire + Blade | https://laravel.com/docs/13.x/frontend |
+| Fortify (auth do kit) | https://laravel.com/docs/13.x/fortify |
 | Installation (`laravel new`, `composer run dev`) | https://laravel.com/docs/13.x/installation |
 | Playbook de agentes (default React — **não** usamos) | https://laravel.com/for/agents |
 | Directory structure | https://laravel.com/docs/13.x/structure |
@@ -820,8 +804,4 @@ Próximo commit de produto: **Fase 0** (`laravel new --database=pgsql --pest --b
 | Testing (Pest / Feature) | https://laravel.com/docs/13.x/testing |
 | Mail / Notifications | https://laravel.com/docs/13.x/mail · https://laravel.com/docs/13.x/notifications |
 | Laravel Boost | https://laravel.com/docs/13.x/boost |
-| Filament 5 install | https://filamentphp.com/docs/5.x/introduction/installation |
-| Filament code quality | https://filamentphp.com/docs/5.x/resources/code-quality-tips |
-| Filament users / FilamentUser | https://filamentphp.com/docs/5.x/users/overview |
-| Filament testing | https://filamentphp.com/docs/5.x/testing/overview |
-| Filament deploy (`filament:optimize`) | https://filamentphp.com/docs/5.x/deployment |
+| Livewire 4 | https://livewire.laravel.com/docs/4.x |

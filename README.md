@@ -2,26 +2,34 @@
 
 Sistema Laravel para gestão de empresa de prestação de serviços: **orçamento → ordem de serviço → faturamento → recebimento**.
 
-Este repositório está na fase de **planejamento**. A implementação começa após o acordo dos documentos abaixo.
+UI: **Livewire 4 + Blade + Flux UI** (starter kit oficial, componentes em classe). Sem Filament e sem SPA.
 
 ## Documentos
 
 | Arquivo | Conteúdo |
 |---|---|
-| [docs/prd.md](docs/prd.md) | Produto: visão, personas, requisitos, o que fica de fora |
-| [docs/spec.md](docs/spec.md) | Técnica: Laravel 13 + Filament 5, domínio, dados, estados, permissões, ordem de build |
+| [docs/prd.md](docs/prd.md) | Produto: visão, personas, requisitos |
+| [docs/spec.md](docs/spec.md) | Técnica, domínio e fases de implementação |
 
-## MVP em uma frase
+## Como rodar
 
-Comercial emite orçamento em PDF, operação executa a OS, financeiro fatura e dá baixa no recebimento — tudo no mesmo sistema, com numeração, auditoria e papéis.
+```bash
+composer install
+cp .env.example .env && php artisan key:generate
+php artisan migrate
+npm install && npm run build
+composer run dev
+```
 
-## Stack prevista
+Painel autenticado: `/dashboard` · login: `/login` · healthcheck: `/up`.
+
+Usuários internos são criados pelo admin — o registro público está desligado.
+
+## Stack
 
 - PHP 8.3–8.5 / Laravel 13
-- Filament 5 (Livewire 4) no backoffice — **não** o starter kit React
-- PostgreSQL 16 + Redis (Sail no repo)
-- Pest 4 + Pint no CI
-- Horizon (filas) · Telescope (debug local) · Boost (Cursor)
-- Deploy: `optimize` + `filament:optimize` + healthcheck `/up`
-
-Detalhes e práticas do ecossistema: [docs/spec.md](docs/spec.md) (seções 1.4 e 22).
+- Livewire 4 + Blade + Flux UI 2
+- Fortify (auth)
+- PostgreSQL 16 + Redis (Sail no `require-dev`)
+- Pest 5 + Pint + Larastan
+- Laravel Boost

@@ -3,7 +3,7 @@
 **Produto:** sistema de gestão para empresa de prestação de serviços  
 **Escopo desta fase:** planejamento (requisitos e spec)  
 **Público:** operação interna (comercial, operacional, financeiro e gestão)  
-**Stack alvo:** Laravel 13 + Filament 5 (detalhado em [`spec.md`](./spec.md))  
+**Stack alvo:** Laravel 13 + Livewire 4 + Blade (detalhado em [`spec.md`](./spec.md))  
 **Idioma / locale:** pt-BR · moeda BRL · fuso `America/Sao_Paulo`
 
 ---
@@ -206,7 +206,7 @@ Prioridade: **P0** = MVP · **P1** = logo após o MVP · **P2** = evolução.
 | NFR-01 | Usuários simultâneos | Até 30 usuários internos no MVP sem degradação perceptível. |
 | NFR-02 | Performance de listagens | Páginas de listagem (orçamentos, OS, faturas) < 500 ms no p95 em dataset de 50k registros (com índices). |
 | NFR-03 | Disponibilidade | Web app único; jobs em fila; falha de job não corrompe status (reatentativa idempotente). |
-| NFR-04 | Segurança | HTTPS, CSRF, senhas com hash (`hashed` cast), `FilamentUser` + policies, `APP_DEBUG=false` em prod, logs de auditoria nos documentos. |
+| NFR-04 | Segurança | HTTPS, CSRF, senhas com hash (`hashed` cast), Fortify + policies, `APP_DEBUG=false` em prod, sem registro público, logs de auditoria nos documentos. |
 | NFR-05 | LGPD | Base legal de cadastro de clientes; exclusão/anonimização sob demanda (admin); sem dado sensível de saúde no MVP. |
 | NFR-06 | Backup | Dump diário do banco (infra); uploads em disco/S3 com retenção. |
 | NFR-07 | Observabilidade | Telescope só local; Horizon + log em staging/prod; healthcheck `/up`; Pulse no P1. |
@@ -255,7 +255,7 @@ Métricas-alvo após 30 dias de uso real (pós-implantação):
 | [`spec.md`](./spec.md) | Como (domínio, dados, APIs, stack Laravel) |
 | README do repositório | Porta de entrada do projeto |
 
-Próximo passo após aprovação deste planejamento: **Fase 0** — `laravel new` (Laravel 13 + Pest + Postgres) + Filament 5, na ordem da spec.
+Próximo passo após este scaffold: **Fase 1** — empresa, usuários e papéis, na ordem da spec.
 
 ---
 
