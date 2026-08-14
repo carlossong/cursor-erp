@@ -17,7 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectUsersTo(fn () => route('dashboard'));
         $middleware->authenticateSessions();
         $middleware->trustHosts();
-        $middleware->appendToGroup('auth', [
+        $middleware->web(append: [
             EnsureUserIsActive::class,
         ]);
     })
