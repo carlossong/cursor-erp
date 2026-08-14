@@ -15,6 +15,16 @@
                     <flux:sidebar.item icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
                         {{ __('Dashboard') }}
                     </flux:sidebar.item>
+                    @can('viewAny', App\Models\Company::class)
+                        <flux:sidebar.item icon="building-office" :href="route('company.edit')" :current="request()->routeIs('company.edit')" wire:navigate>
+                            {{ __('Empresa') }}
+                        </flux:sidebar.item>
+                    @endcan
+                    @can('viewAny', App\Models\User::class)
+                        <flux:sidebar.item icon="users" :href="route('users.index')" :current="request()->routeIs('users.*')" wire:navigate>
+                            {{ __('Usuários') }}
+                        </flux:sidebar.item>
+                    @endcan
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

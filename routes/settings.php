@@ -1,8 +1,10 @@
 <?php
 
 use App\Livewire\Settings\Appearance;
+use App\Livewire\Settings\Company;
 use App\Livewire\Settings\Profile;
 use App\Livewire\Settings\Security;
+use App\Models\Company as CompanyModel;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth'])->group(function () {
@@ -19,6 +21,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
             'password.confirm',
         ])
         ->name('security.edit');
+
+    Route::livewire('settings/company', Company::class)
+        ->can('viewAny', CompanyModel::class)
+        ->name('company.edit');
 });
 
 Route::get('.well-known/passkey-endpoints', function () {
