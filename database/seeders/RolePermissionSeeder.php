@@ -21,6 +21,10 @@ class RolePermissionSeeder extends Seeder
         'users.create',
         'users.update',
         'users.delete',
+        'customers.view',
+        'customers.create',
+        'customers.update',
+        'customers.delete',
     ];
 
     /**
@@ -38,13 +42,23 @@ class RolePermissionSeeder extends Seeder
 
         Role::findOrCreate('admin', 'web')->syncPermissions($this->permissions);
 
+        Role::findOrCreate('comercial', 'web')->syncPermissions([
+            'customers.view',
+            'customers.create',
+            'customers.update',
+            'customers.delete',
+        ]);
+
         Role::findOrCreate('gestor', 'web')->syncPermissions([
             'companies.view',
             'users.view',
+            'customers.view',
         ]);
 
-        foreach (['comercial', 'operacao', 'financeiro'] as $role) {
-            Role::findOrCreate($role, 'web')->syncPermissions([]);
+        foreach (['operacao', 'financeiro'] as $role) {
+            Role::findOrCreate($role, 'web')->syncPermissions([
+                'customers.view',
+            ]);
         }
     }
 }
